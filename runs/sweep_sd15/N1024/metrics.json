@@ -1,0 +1,16 @@
+{
+  "train_size": 1024,
+  "eval_samples": 256,
+  "num_inference_steps": 30,
+  "guidance_scale": 7.5,
+  "descriptor": "clip",
+  "pfd_teacher_student_mean": 0.11808754503726959,
+  "pfd_teacher_student_std": 0.054733775556087494,
+  "pfd_teacher_student_n": 256,
+  "fid_student_teacher": 137.66786193847656,
+  "pfd_student_empirical_mean": 0.1339617222547531,
+  "pfd_student_empirical_std": 0.05704657733440399,
+  "pfd_student_empirical_n": 256,
+  "m_distance_student_to_train_mean": 0.06740744411945343,
+  "fid_student_train": 127.60641479492188
+}

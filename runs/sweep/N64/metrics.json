@@ -1,0 +1,19 @@
+{
+  "pfd_teacher_student_mean": 0.4603431224822998,
+  "pfd_teacher_student_std": 0.17611496150493622,
+  "pfd_teacher_student_n": 256,
+  "fid_student_teacher": 114.79823303222656,
+  "pfd_student_empirical_mean": 0.6535332202911377,
+  "pfd_student_empirical_std": 0.18795768916606903,
+  "pfd_student_empirical_n": 256,
+  "m_distance_student_to_train_mean": 0.5502988696098328,
+  "fid_student_train": 174.95053100585938,
+  "eval_samples": 256,
+  "num_inference_steps": 30,
+  "guidance_scale": 4.0,
+  "descriptor": "identity",
+  "seed": 123,
+  "batch_size": 8,
+  "empirical_chunk_train": 1024,
+  "train_size": 64
+}
