@@ -49,12 +49,3 @@ python -m fae.scripts.train_stage3 --config configs/train/stage3_sana_sprint_0p6
 ```bash
 python -m fae.scripts.sample --config configs/train/stage3_sana_sprint_0p6b.yaml --prompt "a tiny astronaut hatching from an egg on the moon"
 ```
-
-## Important caveat
-
-This repo is designed to make FAE-style latent adaptation **easy to test on pretrained DiT-family backbones**. It does **not** claim to fully reproduce every original backend training recipe. In particular:
-- SD3 native training uses a full MMDiT text stack
-- Sana-Sprint is a distilled few-step model with its own consistency/distillation recipe
-- this repo lets you **reuse those pretrained transformers as backends**, finetune bridges, and optionally add LoRA / partial finetuning
-
-That is the intended experimental interface for testing the paper's method on modern pretrained diffusion transformers.
