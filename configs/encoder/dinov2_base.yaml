@@ -1,0 +1,4 @@
+name: dinov2
+model_name: facebook/dinov2-base
+prefix_tokens: 1
+patch_size: 16

@@ -1,0 +1,38 @@
+device: cuda
+encoder:
+  name: siglip2
+  model_name: /home/kaytkhadzhayev/.cache/huggingface/hub/models--google--siglip2-large-patch16-256/snapshots/992cd240c57e88f82d787b8875bd34e60109302c
+  processor_name: /home/kaytkhadzhayev/.cache/huggingface/hub/models--google--siglip2-large-patch16-256/snapshots/992cd240c57e88f82d787b8875bd34e60109302c
+  prefix_tokens: 0
+  patch_size: 16
+fae:
+  latent_dim: 32
+  encoder_heads: 24
+  encoder_hidden_dim: 6144
+  decoder_hidden_dim: 1024
+  decoder_layers: 6
+  decoder_heads: 24
+  kl_weight: 0.0
+  normalize_features: true
+  feature_stats_path: checkpoints/feature_stats/siglip2_features.pt
+  feature_eps: 1.0e-6
+pixel_decoder:
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 768
+  num_layers: 12
+  num_heads: 12
+train:
+  batch_size: 64
+  num_workers: 8
+  lr: 1.0e-4
+  weight_decay: 0.05
+  epochs: 100
+  lr_scheduler: cosine
+  warmup_epochs: 1
+  min_lr_ratio: 0.1
+  output_dir: checkpoints/stage1_siglip2
+  dtype: fp32
+data:
+  root: /tmp/data
+  max_samples: 1

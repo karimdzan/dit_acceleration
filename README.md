@@ -1,53 +1,60 @@
-# Accelerating DiT | PFD / Memorization vs Generalization for a pretrained DiT
+# FAE-Adapters: Feature Auto-Encoders for Frozen Vision Encoders + Pretrained DiTs and Flow Matching Models
 
-This repo implements the **teacher–student evaluation protocol** and **Probability Flow Distance (PFD)** idea from:
+## Repository layout
 
-- Zhang et al., *Understanding Generalization in Diffusion Models via Probability Flow Distance* (arXiv:2505.20123).
-
-We use a **pretrained Diffusion Transformer (DiT)** from diffusers as the **teacher** and create a **student** by fine-tuning (small, controllable training) on a limited synthetic dataset sampled from the teacher.
-
-## What you get
-- `PFD(teacher, student)`: proxy **generalization error** under the paper’s teacher–student protocol.
-- `M-distance(student, trainset)`: a practical **memorization** proxy (matches the paper’s discussion of memorization metrics).
-
-> Note: The paper also derives an *exact* memorization score via the closed-form score of the empirical distribution (Appendix D). That requires implementing an explicit PF-ODE solver for the empirical distribution; this repo keeps the memorization metric practical and scalable.
-
-## Quickstart
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -e .
-
-# 1) Generate a small synthetic trainset from the teacher
-python -m scripts.generate_teacher_dataset \
-  --out_dir runs/demo \
-  --teacher_id facebook/DiT-XL-2-256 \
-  --train_size 64 \
-  --image_size 256 \
-  --num_inference_steps 30
-
-# 2) Fine-tune student on that set (few steps) and evaluate
-python -m scripts.run_experiment \
-  --run_dir runs/demo \
-  --teacher_id facebook/DiT-XL-2-256 \
-  --train_size 64 \
-  --max_train_steps 600 \
-  --lr 5e-5 \
-  --eval_samples 256 \
-  --num_inference_steps 30 \
-  --descriptor clip
+```text
+fae/
+  backbones/          frozen vision encoders
+  models/             FAE, pixel decoder, posterior, bridge
+  generators/         backend registry + diffusion wrappers
+  training/           stage 1/2/3 loops
+  scripts/            train / sample entrypoints
+  utils/              checkpointing, image utils, loss helpers
+configs/
+  encoder/
+  train/
+tests/
 ```
 
-## Tips for seeing memorization vs generalization
-- Memorization regime: small `--train_size` (e.g., 16/32/64) + longer training (more steps) + slightly higher LR.
-- Generalization regime: larger `--train_size` (e.g., 5k+) + moderate steps.
+## Install
 
-If you have limited compute, sweep sizes like: 32, 64, 128, 256, 512.
+```bash
+pip install diffusers>=0.37.0 transformers accelerate safetensors peft
+```
 
-## Outputs
-In `run_dir/`:
-- `teacher_train_latents.pt` : synthetic dataset (latents + labels)
-- `student/` : fine-tuned student pipeline
-- `metrics.json` : evaluation results (PFD + M-distance + metadata)
+## Guide
+
+### Stage 1
+```bash
+python -m fae.scripts.train_stage1 --config configs/train/stage1_dinov2.yaml
+```
+
+### Stage 2
+```bash
+python -m fae.scripts.train_stage2 --config configs/train/stage2_pixel_gaussian.yaml
+python -m fae.scripts.train_stage2 --config configs/train/stage2_pixel_finetune.yaml
+```
+
+### Stage 3 with internal backend
+```bash
+python -m fae.scripts.train_stage3 --config configs/train/stage3_internal_class.yaml
+```
+
+### Stage 3 with Sana-Sprint bridge finetuning
+```bash
+python -m fae.scripts.train_stage3 --config configs/train/stage3_sana_sprint_0p6b.yaml
+```
+
+### Sampling through the FAE decoder stack
+```bash
+python -m fae.scripts.sample --config configs/train/stage3_sana_sprint_0p6b.yaml --prompt "a tiny astronaut hatching from an egg on the moon"
+```
+
+## Important caveat
+
+This repo is designed to make FAE-style latent adaptation **easy to test on pretrained DiT-family backbones**. It does **not** claim to fully reproduce every original backend training recipe. In particular:
+- SD3 native training uses a full MMDiT text stack
+- Sana-Sprint is a distilled few-step model with its own consistency/distillation recipe
+- this repo lets you **reuse those pretrained transformers as backends**, finetune bridges, and optionally add LoRA / partial finetuning
+
+That is the intended experimental interface for testing the paper's method on modern pretrained diffusion transformers.

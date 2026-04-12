@@ -1,0 +1,52 @@
+device: cuda
+encoder:
+  name: dinov2
+  model_name: facebook/dinov2-base
+  prefix_tokens: 1
+  patch_size: 16
+fae:
+  latent_dim: 32
+  encoder_heads: 8
+  decoder_hidden_dim: 768
+  decoder_layers: 6
+  decoder_heads: 8
+pixel_decoder:
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 768
+  num_layers: 12
+  num_heads: 12
+conditioning:
+  type: text
+generator:
+  name: diffusers_sd3
+  pipeline_name_or_path: stabilityai/stable-diffusion-3-medium-diffusers
+  pipeline_class: StableDiffusion3Pipeline
+  torch_dtype: bfloat16
+  objective: diffusion
+  prediction_type: epsilon
+  train_mode: frozen
+  sample_size: 32
+  in_channels: 16
+bridge:
+  num_res_blocks: 2
+  model_height: 32
+  model_width: 32
+stage3:
+  fae_checkpoint: checkpoints/stage1_dinov2/latest.pt
+  pixel_decoder_checkpoint: checkpoints/stage2_finetune/latest.pt
+  generator_checkpoint: checkpoints/stage3_sd3_medium/latest.pt
+  bridge_cycle_weight: 0.1
+train:
+  batch_size: 2
+  num_workers: 4
+  lr: 5.0e-5
+  weight_decay: 0.01
+  epochs: 3
+  output_dir: checkpoints/stage3_sd3_medium  
+  dtype: bf16
+data:
+  root: /tmp/data
+sampling:
+  num_steps: 28
+  output_dir: samples/sd3_medium

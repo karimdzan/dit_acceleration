@@ -1,0 +1,35 @@
+device: cuda
+encoder:
+  name: vit_mae
+  model_name: /home/kaytkhadzhayev/.cache/huggingface/hub/models--facebook--vit-mae-base/snapshots/e6bc0422fef212158e4205f3f8b6dd005ca6e620/
+  prefix_tokens: 1
+  patch_size: 16
+fae:
+  latent_dim: 64
+  encoder_heads: 8
+  decoder_hidden_dim: 768
+  decoder_layers: 8
+  decoder_heads: 8
+  kl_weight: 1.0e-6
+  normalize_features: true
+  feature_stats_path: checkpoints/feature_stats/vit_mae_features.pt
+  feature_eps: 1.0e-6
+pixel_decoder:
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 768
+  num_layers: 12
+  num_heads: 12
+train:
+  batch_size: 512
+  num_workers: 8
+  lr: 1.0e-4
+  weight_decay: 0.05
+  epochs: 50
+  lr_scheduler: cosine
+  warmup_epochs: 1
+  min_lr_ratio: 0.1
+  output_dir: checkpoints/stage1_vit_mae
+  dtype: bf16
+data:
+  root: /tmp/data

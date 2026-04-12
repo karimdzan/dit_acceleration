@@ -1,0 +1,59 @@
+device: cuda
+encoder:
+  name: dinov2
+  model_name: /home/kaytkhadzhayev/.cache/huggingface/hub/models--facebook--dinov2-base/snapshots/9627a7c83c4802e0fafd00af02ea88680faec4d9/
+  prefix_tokens: 1
+  patch_size: 16
+fae:
+  latent_dim: 32
+  encoder_heads: 8
+  decoder_hidden_dim: 768
+  decoder_layers: 6
+  decoder_heads: 8
+pixel_decoder:
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 768
+  num_layers: 12
+  num_heads: 12
+conditioning:
+  type: class
+  num_classes: 1000
+generator:
+  name: diffusers_dit
+  transformer_name_or_path: /tmp/hf/hub/models--facebook--DiT-XL-2-256/snapshots/b1c3b955c04220beb783afd8ecbb7351ed0c5d08/
+  transformer_subfolder: transformer
+  scheduler_subfolder: scheduler
+  torch_dtype: bfloat16
+  objective: diffusion
+  prediction_type: epsilon
+  train_mode: lora
+  sample_size: 32
+  in_channels: 4
+bridge:
+  num_res_blocks: 2
+  model_height: 32
+  model_width: 32
+stage3:
+  fae_checkpoint: checkpoints/stage1_dinov2/latest.pt
+  pixel_decoder_checkpoint: checkpoints/stage2_finetune/dinov2/latest.pt
+  generator_checkpoint: checkpoints/stage3_dit_imagenet/latest.pt
+  bridge_cycle_weight: 0.1
+train:
+  batch_size: 64
+  num_workers: 8
+  lr: 1.0e-4
+  weight_decay: 0.01
+  epochs: 80
+  output_dir: checkpoints/stage3_dit_imagenet
+  dtype: bf16
+  drop_last: true
+  skip_oom_batches: false
+data:
+  root: /tmp/data
+  return_none_on_error: true
+  load_truncated_images: true
+  warn_limit: 50
+sampling:
+  num_steps: 50
+  output_dir: samples/dit_imagenet

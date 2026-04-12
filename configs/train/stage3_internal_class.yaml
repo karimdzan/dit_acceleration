@@ -1,0 +1,51 @@
+device: cuda
+encoder:
+  name: dinov2
+  model_name: facebook/dinov2-base
+  prefix_tokens: 1
+  patch_size: 16
+fae:
+  latent_dim: 32
+  encoder_heads: 8
+  decoder_hidden_dim: 768
+  decoder_layers: 6
+  decoder_heads: 8
+pixel_decoder:
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 768
+  num_layers: 12
+  num_heads: 12
+conditioning:
+  type: class
+  num_classes: 1000
+generator:
+  name: internal_dit
+  model_dim: 768
+  depth: 12
+  num_heads: 12
+  cond_dim: 1024
+  objective: diffusion
+  prediction_type: v_prediction
+  sample_size: 16
+  in_channels: 32
+bridge:
+  num_res_blocks: 2
+stage3:
+  fae_checkpoint: checkpoints/stage1_dinov2/latest.pt
+  pixel_decoder_checkpoint: checkpoints/stage2_finetune/latest.pt
+  generator_checkpoint: checkpoints/stage3_internal/latest.pt
+  bridge_cycle_weight: 0.1
+train:
+  batch_size: 8
+  num_workers: 4
+  lr: 1.0e-4
+  weight_decay: 0.05
+  epochs: 10
+  output_dir: checkpoints/stage3_internal  
+  dtype: bf16
+data:
+  root: /tmp/data
+sampling:
+  num_steps: 30
+  output_dir: samples/internal

@@ -1,0 +1,51 @@
+device: cuda
+encoder:
+  name: siglip2
+  model_name: google/siglip2-base-patch16-224
+  prefix_tokens: 0
+  patch_size: 16
+fae:
+  latent_dim: 32
+  encoder_heads: 8
+  decoder_hidden_dim: 768
+  decoder_layers: 6
+  decoder_heads: 8
+pixel_decoder:
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 768
+  num_layers: 12
+  num_heads: 12
+conditioning:
+  type: text
+generator:
+  name: diffusers_sana
+  pipeline_name_or_path: Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers
+  pipeline_class: SanaSprintPipeline
+  torch_dtype: bfloat16
+  objective: flow_matching
+  train_mode: frozen
+  sample_size: 32
+  in_channels: 32
+bridge:
+  num_res_blocks: 2
+  model_height: 32
+  model_width: 32
+stage3:
+  fae_checkpoint: checkpoints/stage1_siglip2/latest.pt
+  pixel_decoder_checkpoint: checkpoints/stage2_finetune/latest.pt
+  generator_checkpoint: checkpoints/stage3_sana_sprint_1p6b/latest.pt
+  bridge_cycle_weight: 0.1
+train:
+  batch_size: 2
+  num_workers: 4
+  lr: 1.0e-4
+  weight_decay: 0.01
+  epochs: 5
+  output_dir: checkpoints/stage3_sana_sprint_1p6b  
+  dtype: bf16
+data:
+  root: /tmp/data
+sampling:
+  num_steps: 4
+  output_dir: samples/sana_sprint_1p6b
