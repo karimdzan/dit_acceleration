@@ -1,21 +1,31 @@
 device: cuda
 encoder:
   name: dinov2
-  model_name: facebook/dinov2-base
+  model_name: /tmp/hf/hub/models--facebook--dinov2-large/snapshots/a18992645e496e6d21ea90829a6652ed6f75ec47
   prefix_tokens: 1
   patch_size: 16
 fae:
   latent_dim: 32
-  encoder_heads: 8
-  decoder_hidden_dim: 768
+  encoder_heads: 24
+  encoder_hidden_dim: 6144
+  encoder_head_dim: 256
+  encoder_use_rope_2d: false
+  decoder_hidden_dim: 1024
   decoder_layers: 6
-  decoder_heads: 8
+  decoder_heads: 16
+  decoder_head_dim: 64
+  decoder_use_rope_2d: true
+  rope_base: 10000.0
+  normalize_features: true
+  feature_stats_path: checkpoints/feature_stats/dinov2_features.pt
 pixel_decoder:
   image_size: 256
   patch_size: 16
-  hidden_dim: 768
-  num_layers: 12
-  num_heads: 12
+  hidden_dim: 1024
+  num_layers: 24
+  num_heads: 16
+  head_dim: 64
+  use_rope_2d: true
 conditioning:
   type: class
   num_classes: 1000
@@ -24,28 +34,30 @@ generator:
   model_dim: 768
   depth: 12
   num_heads: 12
+  head_dim: 64
   cond_dim: 1024
   objective: diffusion
   prediction_type: v_prediction
+  use_rope_2d: false
   sample_size: 16
   in_channels: 32
 bridge:
-  num_res_blocks: 2
+  enabled: false
 stage3:
   fae_checkpoint: checkpoints/stage1_dinov2/latest.pt
-  pixel_decoder_checkpoint: checkpoints/stage2_finetune/latest.pt
-  generator_checkpoint: checkpoints/stage3_internal/latest.pt
-  bridge_cycle_weight: 0.1
+  pixel_decoder_checkpoint: checkpoints/stage2_finetune/dinov2/latest.pt
+  generator_checkpoint: checkpoints/stage3_internal/dinov2/latest.pt
+  bridge_cycle_weight: 0.0
 train:
   batch_size: 8
   num_workers: 4
   lr: 1.0e-4
   weight_decay: 0.05
-  epochs: 10
-  output_dir: checkpoints/stage3_internal  
+  epochs: 100
+  output_dir: checkpoints/stage3_internal/dinov2
   dtype: bf16
 data:
   root: /tmp/data
 sampling:
   num_steps: 30
-  output_dir: samples/internal
+  output_dir: samples/internal_dinov2

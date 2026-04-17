@@ -20,11 +20,13 @@ from fae.scripts.common import (
 from fae.training import train_stage2_epoch
 from fae.utils.checkpoint import load_checkpoint, save_checkpoint
 from fae.utils.losses import VGGPerceptualLoss
+from fae.utils.distributed import barrier, cleanup_distributed, init_distributed_from_env, is_main_process, maybe_set_dataloader_epoch, maybe_wrap_ddp
 
 
 def main():
     args = parse_args('Train pixel decoder (stage 2)')
     config = load_yaml(args.config)
+    init_distributed_from_env()
     device = build_device(config)
 
     dataloader = build_dataloader(config)
@@ -56,6 +58,11 @@ def main():
     if train_dtype in (torch.float16, torch.bfloat16):
         fae = fae.to(train_dtype)
         pixel_decoder = pixel_decoder.to(train_dtype)
+        if discriminator is not None:
+            discriminator = discriminator.to(train_dtype)
+
+    pixel_decoder_train = maybe_wrap_ddp(pixel_decoder, device)
+    discriminator_train = maybe_wrap_ddp(discriminator, device) if discriminator is not None else None
 
     output_dir = Path(config['train'].get('output_dir', 'checkpoints/stage2'))
     resume_path = args.resume or str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None
@@ -68,9 +75,10 @@ def main():
 
     epochs = int(config['train'].get('epochs', 1))
     for epoch in range(start_epoch, epochs):
+        maybe_set_dataloader_epoch(dataloader, epoch)
         logs = train_stage2_epoch(
             fae=fae,
-            pixel_decoder=pixel_decoder,
+            pixel_decoder=pixel_decoder_train,
             backbone=backbone,
             dataloader=dataloader,
             optimizer=optimizer,
@@ -79,25 +87,29 @@ def main():
             device=device,
             image_size=config['pixel_decoder'].get('image_size', 256),
             mode=config['stage2'].get('mode', 'gaussian'),
-            discriminator=discriminator,
+            discriminator=discriminator_train,
             disc_optimizer=disc_optimizer,
             perceptual_loss=perceptual_loss,
             noise_std=config['stage2'].get('noise_std', 0.1),
-            skip_oom_batches=config["stage2"].get("skip_oom_batches", False)
+            noise_scale_mode=config['stage2'].get('noise_scale_mode', 'feature_rms'),
+            skip_oom_batches=config["stage2"].get("skip_oom_batches", False),
         )
-        print(f"epoch={epoch} " + ' '.join(f"{k}={v:.4f}" for k, v in logs.items()))
-        state = {
-            'epoch': epoch + 1,
-            'model': pixel_decoder.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scaler': scaler.state_dict() if scaler.is_enabled() else None,
-            'config': config,
-        }
-        if discriminator is not None:
-            state['discriminator'] = discriminator.state_dict()
-        if disc_optimizer is not None:
-            state['disc_optimizer'] = disc_optimizer.state_dict()
-        save_checkpoint(output_dir / 'latest.pt', state)
+        if is_main_process():
+            print(f"epoch={epoch} " + ' '.join(f"{k}={v:.4f}" for k, v in logs.items()))
+            state = {
+                'epoch': epoch + 1,
+                'model': pixel_decoder.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'scaler': scaler.state_dict() if scaler.is_enabled() else None,
+                'config': config,
+            }
+            if discriminator is not None:
+                state['discriminator'] = discriminator.state_dict()
+            if disc_optimizer is not None:
+                state['disc_optimizer'] = disc_optimizer.state_dict()
+            save_checkpoint(output_dir / 'latest.pt', state)
+        barrier()
+    cleanup_distributed()
 
 
 if __name__ == '__main__':

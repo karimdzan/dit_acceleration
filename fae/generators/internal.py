@@ -12,14 +12,31 @@ from .objectives import FlowMatchingObjective, SimpleCosineDiffusionObjective
 
 
 class _InternalLatentNetwork(nn.Module):
-    def __init__(self, spec: LatentTensorSpec, model_dim: int = 768, depth: int = 12, num_heads: int = 12, cond_dim: int = 1024, mlp_ratio: float = 4.0) -> None:
+    def __init__(
+        self,
+        spec: LatentTensorSpec,
+        model_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
+        cond_dim: int = 1024,
+        mlp_ratio: float = 4.0,
+        head_dim: int | None = None,
+        use_rope_2d: bool = False,
+    ) -> None:
         super().__init__()
         self.spec = spec
         self.in_proj = nn.Linear(spec.channels, model_dim)
         self.pos = nn.Parameter(torch.zeros(1, spec.height * spec.width, model_dim))
         self.time_embed = SinusoidalTimestepEmbedding(cond_dim)
         self.blocks = nn.ModuleList([
-            DiTBlock(model_dim, num_heads=num_heads, cond_dim=cond_dim, mlp_ratio=mlp_ratio)
+            DiTBlock(
+                model_dim,
+                num_heads=num_heads,
+                cond_dim=cond_dim,
+                mlp_ratio=mlp_ratio,
+                head_dim=head_dim,
+                use_rope_2d=use_rope_2d,
+            )
             for _ in range(depth)
         ])
         self.norm = RMSNorm(model_dim)
@@ -36,7 +53,7 @@ class _InternalLatentNetwork(nn.Module):
             cond = cond + self.default_cond.unsqueeze(0)
         y = self.in_proj(tokens) + self.pos
         for block in self.blocks:
-            y = block(y, cond)
+            y = block(y, cond, grid_size=(h, w))
         y = self.out_proj(self.norm(y))
         return y.transpose(1, 2).reshape(b, c, h, w)
 
@@ -53,10 +70,21 @@ class InternalLatentDiTBackend(LatentGeneratorBackend):
         objective: str = "diffusion",
         prediction_type: str = "v_prediction",
         time_shift: float = 0.0,
+        head_dim: int | None = None,
+        use_rope_2d: bool = False,
     ) -> None:
         super().__init__()
         self.spec = spec
-        self.model = _InternalLatentNetwork(spec, model_dim=model_dim, depth=depth, num_heads=num_heads, cond_dim=cond_dim, mlp_ratio=mlp_ratio)
+        self.model = _InternalLatentNetwork(
+            spec,
+            model_dim=model_dim,
+            depth=depth,
+            num_heads=num_heads,
+            cond_dim=cond_dim,
+            mlp_ratio=mlp_ratio,
+            head_dim=head_dim,
+            use_rope_2d=use_rope_2d,
+        )
         self.objective = FlowMatchingObjective() if objective == "flow_matching" else SimpleCosineDiffusionObjective(prediction_type=prediction_type)
         self.time_shift = time_shift
 

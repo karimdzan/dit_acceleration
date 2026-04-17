@@ -8,9 +8,14 @@ fae:
   latent_dim: 32
   encoder_heads: 24
   encoder_hidden_dim: 6144
+  encoder_head_dim: 256
+  encoder_use_rope_2d: false
   decoder_hidden_dim: 1024
   decoder_layers: 6
   decoder_heads: 16
+  decoder_head_dim: 64
+  decoder_use_rope_2d: true
+  rope_base: 10000.0
   kl_weight: 1.0e-6
   normalize_features: true
   feature_stats_path: checkpoints/feature_stats/dinov2_features.pt
@@ -19,14 +24,16 @@ pixel_decoder:
   image_size: 256
   patch_size: 16
   hidden_dim: 1024
-  num_layers: 12
-  num_heads: 12
+  num_layers: 24
+  num_heads: 16
+  head_dim: 64
+  use_rope_2d: true
 train:
   batch_size: 64
   num_workers: 8
   lr: 1.0e-4
   weight_decay: 0.05
-  epochs: 100
+  epochs: 20
   lr_scheduler: cosine
   warmup_epochs: 1
   min_lr_ratio: 0.1

@@ -1,8 +1,6 @@
 from typing import Any
 
-import math
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -12,7 +10,22 @@ from fae.models.discriminator import NLayerDiscriminator
 from fae.models.fae import FeatureAutoEncoder
 from fae.models.pixel_decoder import ViTPixelDecoder
 from fae.training.common import prepare_backbone_inputs
+from fae.utils.distributed import is_main_process, reduce_mean_dict
 from fae.utils.losses import VGGPerceptualLoss, discriminator_hinge_loss, image_reconstruction_loss
+
+
+def add_embedding_noise(features: torch.Tensor, noise_std: float, mode: str = "fixed") -> torch.Tensor:
+    if noise_std <= 0:
+        return features
+    noise = torch.randn_like(features)
+    if mode == "fixed":
+        scale = noise_std
+    elif mode in {"feature_rms", "token_rms", "norm_scaled"}:
+        token_scale = features.pow(2).mean(dim=-1, keepdim=True).sqrt().clamp(min=1e-6)
+        scale = noise_std * token_scale
+    else:
+        raise ValueError(f"Unknown noise scaling mode: {mode}")
+    return features + scale * noise
 
 
 @torch.no_grad()
@@ -25,6 +38,7 @@ def build_stage2_preview(
     image_size: int,
     mode: str = "gaussian",
     noise_std: float = 0.1,
+    noise_scale_mode: str = "fixed",
     reference_decoder: ViTPixelDecoder | None = None,
 ) -> dict[str, torch.Tensor] | None:
     if batch is None:
@@ -35,7 +49,7 @@ def build_stage2_preview(
     backbone_inputs = prepare_backbone_inputs(backbone, images, device)
     features = backbone.forward_features(backbone_inputs).tokens.to(device=device, dtype=next(fae.parameters()).dtype)
     if mode == "gaussian":
-        decoder_input = features + noise_std * torch.randn_like(features)
+        decoder_input = add_embedding_noise(features, noise_std=noise_std, mode=noise_scale_mode)
     elif mode == "finetune":
         decoder_input = fae(features).reconstructed_features
     else:
@@ -68,14 +82,16 @@ def train_stage2_epoch(
     disc_optimizer: torch.optim.Optimizer | None = None,
     perceptual_loss: VGGPerceptualLoss | None = None,
     noise_std: float = 0.1,
+    noise_scale_mode: str = "fixed",
     skip_oom_batches: bool = False,
 ) -> dict[str, float]:
     fae.eval()
+    backbone.eval()
     pixel_decoder.train()
     target_transform = TargetImageTransform(image_size)
     running = {"loss": 0.0, "recon": 0.0, "perceptual": 0.0, "adversarial": 0.0, "num_skipped": 0.0}
     count = 0
-    for batch in tqdm(dataloader, desc="stage2", leave=False):
+    for batch in tqdm(dataloader, desc="stage2", leave=False, disable=not is_main_process()):
         if batch is None:
             running["num_skipped"] += 1
             continue
@@ -84,13 +100,14 @@ def train_stage2_epoch(
             targets = target_transform(images).to(device)
             backbone_inputs = prepare_backbone_inputs(backbone, images, device)
             with torch.no_grad():
-                features = backbone.forward_features(backbone_inputs).tokens.to(device=device, dtype=next(fae.parameters()).dtype)
-                if mode == "gaussian":
-                    decoder_input = features + noise_std * torch.randn_like(features)
-                elif mode == "finetune":
-                    decoder_input = fae(features).reconstructed_features
-                else:
-                    raise ValueError(f"Unknown stage2 mode: {mode}")
+                with context:
+                    features = backbone.forward_features(backbone_inputs).tokens.to(device=device, dtype=next(fae.parameters()).dtype)
+                    if mode == "gaussian":
+                        decoder_input = add_embedding_noise(features, noise_std=noise_std, mode=noise_scale_mode)
+                    elif mode == "finetune":
+                        decoder_input = fae(features).reconstructed_features
+                    else:
+                        raise ValueError(f"Unknown stage2 mode: {mode}")
 
             disc_fake_logits = None
             with context:
@@ -143,12 +160,13 @@ def train_stage2_epoch(
                 running['num_skipped'] += 1
                 continue
             raise
-        except Exception:
+        except RuntimeError as exc:
             optimizer.zero_grad(set_to_none=True)
             if disc_optimizer is not None:
                 disc_optimizer.zero_grad(set_to_none=True)
-            if skip_oom_batches:
+            if skip_oom_batches and 'out of memory' in str(exc).lower():
                 running['num_skipped'] += 1
+                torch.cuda.empty_cache()
                 continue
             raise
-    return {k: v / max(count, 1) if k != 'num_skipped' else v for k, v in running.items()}
+    return reduce_mean_dict(running, count=count, device=device, sum_keys={'num_skipped'})

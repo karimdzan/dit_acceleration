@@ -10,6 +10,9 @@ from .common import ConditioningBundle, LatentTensorSpec, LossOutput
 class LatentGeneratorBackend(nn.Module, ABC):
     uses_native_prompt_encoder: bool = False
 
+    def forward(self, latents: torch.Tensor, conditioning: ConditioningBundle | None = None) -> LossOutput:
+        return self.training_loss(latents, conditioning=conditioning)
+
     @abstractmethod
     def latent_spec(self) -> LatentTensorSpec:
         raise NotImplementedError

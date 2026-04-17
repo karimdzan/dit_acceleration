@@ -3,7 +3,6 @@ from pathlib import Path
 import torch
 
 from fae.config import load_yaml
-from fae.generators.common import LatentTensorSpec
 from fae.scripts.common import (
     build_backbone_from_config,
     build_bridge_from_config,
@@ -12,6 +11,7 @@ from fae.scripts.common import (
     build_fae_from_config,
     build_generator_from_config,
     get_autocast_context,
+    get_fae_latent_spec,
     get_grad_scaler,
     get_train_dtype,
     maybe_build_conditioners,
@@ -21,11 +21,13 @@ from fae.scripts.common import (
 )
 from fae.training import train_stage3_epoch
 from fae.utils.checkpoint import load_checkpoint, save_checkpoint
+from fae.utils.distributed import barrier, cleanup_distributed, init_distributed_from_env, is_main_process, maybe_set_dataloader_epoch, maybe_wrap_ddp
 
 
 def main():
     args = parse_args('Train generator on FAE latents (stage 3)')
     config = load_yaml(args.config)
+    init_distributed_from_env()
     device = build_device(config)
 
     dataloader = build_dataloader(config)
@@ -36,13 +38,18 @@ def main():
     fae.load_state_dict(fae_state['model'])
     fae.eval()
 
-    bridge_seed_spec = LatentTensorSpec(
-        channels=config['generator'].get('in_channels', config['fae'].get('latent_dim', 32)),
-        height=config['generator'].get('sample_size', config.get('bridge', {}).get('model_height', 16)),
-        width=config['generator'].get('sample_size', config.get('bridge', {}).get('model_width', 16)),
-    )
-    generator = build_generator_from_config(config, model_spec=bridge_seed_spec).to(device)
-    bridge = build_bridge_from_config(config, generator.latent_spec()).to(device)
+    fae_spec = get_fae_latent_spec(config)
+    bridge_enabled = bool(config.get('bridge', {}).get('enabled', True))
+    generator_spec = fae_spec if not bridge_enabled else None
+    if generator_spec is None:
+        from fae.generators.common import LatentTensorSpec
+        generator_spec = LatentTensorSpec(
+            channels=config['generator'].get('in_channels', fae_spec.channels),
+            height=config['generator'].get('sample_size', fae_spec.height),
+            width=config['generator'].get('sample_size', fae_spec.width),
+        )
+    generator = build_generator_from_config(config, model_spec=generator_spec).to(device)
+    bridge = build_bridge_from_config(config, fae_spec=fae_spec, model_spec=generator.latent_spec()).to(device)
 
     optim_params = list(bridge.parameters()) + [p for p in generator.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
@@ -59,12 +66,17 @@ def main():
         generator = generator.to(train_dtype)
         bridge = bridge.to(train_dtype)
 
+    generator_train = maybe_wrap_ddp(generator, device)
+    bridge_train = maybe_wrap_ddp(bridge, device)
+
     class_conditioner, text_conditioner = maybe_build_conditioners(config, device)
+    class_conditioner_train = maybe_wrap_ddp(class_conditioner, device) if class_conditioner is not None else None
+    text_conditioner_train = maybe_wrap_ddp(text_conditioner, device) if text_conditioner is not None else None
     cond_params = []
-    if class_conditioner is not None:
-        cond_params += list(class_conditioner.parameters())
-    if text_conditioner is not None:
-        cond_params += list(text_conditioner.parameters())
+    if class_conditioner_train is not None:
+        cond_params += list(class_conditioner_train.parameters())
+    if text_conditioner_train is not None:
+        cond_params += list(text_conditioner_train.parameters())
     conditioner_optimizer = None
     if cond_params:
         conditioner_optimizer = torch.optim.AdamW(cond_params, lr=config['train'].get('lr', 1e-4))
@@ -84,38 +96,42 @@ def main():
 
     epochs = int(config['train'].get('epochs', 1))
     for epoch in range(start_epoch, epochs):
+        maybe_set_dataloader_epoch(dataloader, epoch)
         logs = train_stage3_epoch(
-            backend=generator,
+            backend=generator_train,
             fae=fae,
-            bridge=bridge,
+            bridge=bridge_train,
             backbone=backbone,
             dataloader=dataloader,
             optimizer=optimizer,
             scaler=scaler,
             context=autocast_context,
             device=device,
-            class_conditioner=class_conditioner,
-            text_conditioner=text_conditioner,
+            class_conditioner=class_conditioner_train,
+            text_conditioner=text_conditioner_train,
             conditioner_optimizer=conditioner_optimizer,
             bridge_cycle_weight=config['stage3'].get('bridge_cycle_weight', 0.0),
             skip_oom_batches=config['train'].get('skip_oom_batches', True),
         )
-        print(f"epoch={epoch} " + ' '.join(f"{k}={v:.4f}" for k, v in logs.items()))
-        state = {
-            'epoch': epoch + 1,
-            'model': generator.state_dict(),
-            'bridge': bridge.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scaler': scaler.state_dict() if scaler.is_enabled() else None,
-            'config': config,
-        }
-        if class_conditioner is not None:
-            state['class_conditioner'] = class_conditioner.state_dict()
-        if text_conditioner is not None:
-            state['text_conditioner'] = text_conditioner.state_dict()
-        if conditioner_optimizer is not None:
-            state['conditioner_optimizer'] = conditioner_optimizer.state_dict()
-        save_checkpoint(output_dir / 'latest.pt', state)
+        if is_main_process():
+            print(f"epoch={epoch} " + ' '.join(f"{k}={v:.4f}" for k, v in logs.items()))
+            state = {
+                'epoch': epoch + 1,
+                'model': generator.state_dict(),
+                'bridge': bridge.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'scaler': scaler.state_dict() if scaler.is_enabled() else None,
+                'config': config,
+            }
+            if class_conditioner is not None:
+                state['class_conditioner'] = class_conditioner.state_dict()
+            if text_conditioner is not None:
+                state['text_conditioner'] = text_conditioner.state_dict()
+            if conditioner_optimizer is not None:
+                state['conditioner_optimizer'] = conditioner_optimizer.state_dict()
+            save_checkpoint(output_dir / 'latest.pt', state)
+        barrier()
+    cleanup_distributed()
 
 
 if __name__ == '__main__':

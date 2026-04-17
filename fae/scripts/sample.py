@@ -12,6 +12,7 @@ from fae.scripts.common import (
     build_fae_from_config,
     build_generator_from_config,
     build_pixel_decoder_from_config,
+    get_fae_latent_spec,
     get_train_dtype,
     parse_args,
 )
@@ -53,13 +54,15 @@ def main():
     pixel_decoder.load_state_dict(pixel_ckpt['model'])
     pixel_decoder.eval()
 
-    seed_spec = LatentTensorSpec(
-        channels=config['generator'].get('in_channels', config['fae'].get('latent_dim', 32)),
-        height=config['generator'].get('sample_size', 16),
-        width=config['generator'].get('sample_size', 16),
+    fae_spec = get_fae_latent_spec(config)
+    bridge_enabled = bool(config.get('bridge', {}).get('enabled', True))
+    generator_spec = fae_spec if not bridge_enabled else LatentTensorSpec(
+        channels=config['generator'].get('in_channels', fae_spec.channels),
+        height=config['generator'].get('sample_size', fae_spec.height),
+        width=config['generator'].get('sample_size', fae_spec.width),
     )
-    generator = build_generator_from_config(config, model_spec=seed_spec).to(device)
-    bridge = build_bridge_from_config(config, generator.latent_spec()).to(device)
+    generator = build_generator_from_config(config, model_spec=generator_spec).to(device)
+    bridge = build_bridge_from_config(config, fae_spec=fae_spec, model_spec=generator.latent_spec()).to(device)
 
     state = load_checkpoint(config['stage3']['generator_checkpoint'], map_location='cpu')
     generator.load_state_dict(state['model'], strict=False)
@@ -76,9 +79,14 @@ def main():
         bridge = bridge.to(train_dtype)
 
     conditioning = None
+    if args.prompt and getattr(generator, 'uses_native_prompt_encoder', False):
+        conditioning = generator.encode_prompts([args.prompt] * args.num_samples, device=device)
     if args.class_label is not None:
         label_tensor = torch.full((args.num_samples,), int(args.class_label), device=device, dtype=torch.long)
-        conditioning = ConditioningBundle(class_labels=label_tensor)
+        if conditioning is None:
+            conditioning = ConditioningBundle(class_labels=label_tensor)
+        else:
+            conditioning.class_labels = label_tensor
     elif config['generator']['name'] == 'diffusers_dit':
         raise ValueError('--class-label is required for class-conditional DiT sampling.')
 

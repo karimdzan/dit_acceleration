@@ -33,6 +33,8 @@ def build_generator_backend(config: dict[str, Any], bridge_spec: LatentTensorSpe
             objective=gen_cfg.get("objective", "diffusion"),
             prediction_type=gen_cfg.get("prediction_type", "v_prediction"),
             time_shift=gen_cfg.get("time_shift", 0.0),
+            head_dim=gen_cfg.get("head_dim"),
+            use_rope_2d=gen_cfg.get("use_rope_2d", False),
         )
     if name in {"diffusers_dit", "diffusers_sd3", "diffusers_sana"}:
         return DiffusersTransformerBackend(

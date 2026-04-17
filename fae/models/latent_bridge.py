@@ -15,6 +15,40 @@ class LatentBridgeSpec:
     model_width: int
 
 
+class BaseLatentAdapter(nn.Module):
+    def to_model_latents(self, z_tokens: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def to_fae_tokens(self, model_latents: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def cycle_loss(self, z_tokens: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+
+class IdentityLatentBridge(BaseLatentAdapter):
+    def __init__(self, spec: LatentBridgeSpec) -> None:
+        super().__init__()
+        self.spec = spec
+
+    def to_model_latents(self, z_tokens: torch.Tensor) -> torch.Tensor:
+        b, n, c = z_tokens.shape
+        expected = self.spec.fae_height * self.spec.fae_width
+        if n != expected:
+            raise ValueError(f"Expected {expected} FAE tokens, got {n}.")
+        return z_tokens.transpose(1, 2).reshape(b, c, self.spec.fae_height, self.spec.fae_width).contiguous()
+
+    def to_fae_tokens(self, model_latents: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = model_latents.shape
+        expected = (self.spec.fae_dim, self.spec.fae_height, self.spec.fae_width)
+        if (c, h, w) != expected:
+            raise ValueError(f"Identity bridge expected model latents {expected}, got {(c, h, w)}.")
+        return model_latents.reshape(b, c, h * w).transpose(1, 2).contiguous()
+
+    def cycle_loss(self, z_tokens: torch.Tensor) -> torch.Tensor:
+        return torch.zeros((), device=z_tokens.device, dtype=z_tokens.dtype)
+
+
 class ResidualConvBlock(nn.Module):
     def __init__(self, channels: int) -> None:
         super().__init__()
@@ -31,7 +65,7 @@ class ResidualConvBlock(nn.Module):
         return x + self.block(x)
 
 
-class LatentBridge(nn.Module):
+class LatentBridge(BaseLatentAdapter):
     def __init__(
         self,
         spec: LatentBridgeSpec,
@@ -70,13 +104,23 @@ class LatentBridge(nn.Module):
     def to_model_latents(self, z_tokens: torch.Tensor) -> torch.Tensor:
         x = self._tokens_to_grid(z_tokens)
         if (x.shape[-2], x.shape[-1]) != (self.spec.model_height, self.spec.model_width):
-            x = F.interpolate(x, size=(self.spec.model_height, self.spec.model_width), mode=self.resize_mode, align_corners=False if self.resize_mode in {"bilinear", "bicubic"} else None)
+            x = F.interpolate(
+                x,
+                size=(self.spec.model_height, self.spec.model_width),
+                mode=self.resize_mode,
+                align_corners=False if self.resize_mode in {"bilinear", "bicubic"} else None,
+            )
         return self.to_model(x)
 
     def to_fae_tokens(self, model_latents: torch.Tensor) -> torch.Tensor:
         x = model_latents
         if (x.shape[-2], x.shape[-1]) != (self.spec.fae_height, self.spec.fae_width):
-            x = F.interpolate(x, size=(self.spec.fae_height, self.spec.fae_width), mode=self.resize_mode, align_corners=False if self.resize_mode in {"bilinear", "bicubic"} else None)
+            x = F.interpolate(
+                x,
+                size=(self.spec.fae_height, self.spec.fae_width),
+                mode=self.resize_mode,
+                align_corners=False if self.resize_mode in {"bilinear", "bicubic"} else None,
+            )
         x = self.to_fae(x)
         return self._grid_to_tokens(x)
 

@@ -1,5 +1,3 @@
-import contextlib
-
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -8,8 +6,9 @@ from fae.backbones.base import FrozenVisionBackbone
 from fae.generators.base import LatentGeneratorBackend
 from fae.models.conditioners import ClassConditioner, FrozenTextConditioner, build_internal_conditioning
 from fae.models.fae import FeatureAutoEncoder
-from fae.models.latent_bridge import LatentBridge
+from fae.models.latent_bridge import BaseLatentAdapter
 from fae.training.common import prepare_backbone_inputs
+from fae.utils.distributed import is_main_process, reduce_mean_dict, unwrap_model
 
 
 def _build_conditioning(
@@ -19,6 +18,7 @@ def _build_conditioning(
     class_conditioner: ClassConditioner | None = None,
     text_conditioner: FrozenTextConditioner | None = None,
 ):
+    backend = unwrap_model(backend)
     if getattr(backend, "uses_native_prompt_encoder", False):
         labels = batch.get("labels")
         captions = batch.get("captions")
@@ -45,7 +45,7 @@ def _build_conditioning(
 def train_stage3_epoch(
     backend: LatentGeneratorBackend,
     fae: FeatureAutoEncoder,
-    bridge: LatentBridge,
+    bridge: BaseLatentAdapter,
     backbone: FrozenVisionBackbone,
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
@@ -61,40 +61,31 @@ def train_stage3_epoch(
     backend.train()
     bridge.train()
     fae.eval()
+    backbone.eval()
     if class_conditioner is not None:
         class_conditioner.train()
     running = {"loss": 0.0, "backend_loss": 0.0, "bridge_cycle": 0.0}
     count = 0
     fae_param = next(fae.parameters(), None)
     fae_dtype = fae_param.dtype if fae_param is not None else torch.float32
-    for batch in tqdm(dataloader, desc="stage3", leave=False):
+    for batch in tqdm(dataloader, desc="stage3", leave=False, disable=not is_main_process()):
         if batch is None:
             continue
         images = batch["images"]
         try:
             backbone_inputs = prepare_backbone_inputs(backbone, images, device)
             with torch.no_grad():
-                features = backbone.forward_features(backbone_inputs).tokens.to(device=device, dtype=fae_dtype)
-                z_tokens, _ = fae.encode(features)
+                with context:
+                    features = backbone.forward_features(backbone_inputs).tokens.to(device=device, dtype=fae_dtype)
+                    z_tokens, _ = fae.encode(features)
             model_latents = bridge.to_model_latents(z_tokens)
             conditioning = _build_conditioning(backend, batch, device=device, class_conditioner=class_conditioner, text_conditioner=text_conditioner)
-
-            # if not hasattr(train_stage3_epoch, "_printed_cond_debug"):
-            #     print("batch labels sample:", batch.get("labels", None)[:8] if batch.get("labels", None) is not None else None)
-            #     if conditioning is None:
-            #         print("conditioning: None")
-            #     else:
-            #         print("conditioning.class_labels is None:", conditioning.class_labels is None)
-            #         if conditioning.class_labels is not None:
-            #             print("conditioning.class_labels shape:", tuple(conditioning.class_labels.shape))
-            #             print("conditioning.class_labels dtype:", conditioning.class_labels.dtype)
-            #     train_stage3_epoch._printed_cond_debug = True
 
             optimizer.zero_grad(set_to_none=True)
             if conditioner_optimizer is not None:
                 conditioner_optimizer.zero_grad(set_to_none=True)
             with context:
-                out = backend.training_loss(model_latents, conditioning=conditioning)
+                out = backend(model_latents, conditioning=conditioning)
                 bridge_cycle = bridge.cycle_loss(z_tokens) if bridge_cycle_weight > 0 else torch.zeros((), device=device)
                 total = out.loss + bridge_cycle_weight * bridge_cycle
             if scaler.is_enabled():
@@ -129,4 +120,4 @@ def train_stage3_epoch(
         running["backend_loss"] += out.logs.get("loss", float(out.loss.detach().cpu()))
         running["bridge_cycle"] += float(bridge_cycle.detach().cpu())
         count += 1
-    return {k: v / max(count, 1) for k, v in running.items()}
+    return reduce_mean_dict(running, count=count, device=device)

@@ -5,7 +5,6 @@ import math
 
 import torch
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 from fae.backbones.base import FrozenVisionBackbone
 
@@ -34,6 +33,7 @@ def prepare_backbone_inputs(backbone: FrozenVisionBackbone, images: list[Any], d
 def format_logs(logs: dict[str, float]) -> str:
     parts = [f"{k}={v:.4f}" for k, v in logs.items()]
     return " ".join(parts)
+
 
 def get_current_lr(optimizer: torch.optim.Optimizer) -> float:
     if not optimizer.param_groups:

@@ -18,11 +18,13 @@ from fae.scripts.common import (
 from fae.training import train_stage1_epoch
 from fae.utils.checkpoint import save_checkpoint
 from fae.training.common import build_lr_scheduler
+from fae.utils.distributed import barrier, cleanup_distributed, init_distributed_from_env, is_main_process, maybe_set_dataloader_epoch, maybe_wrap_ddp
 
 
 def main():
     args = parse_args('Train feature auto-encoder (stage 1)')
     config = load_yaml(args.config)
+    init_distributed_from_env()
     device = build_device(config)
 
     dataloader = build_dataloader(config)
@@ -35,8 +37,10 @@ def main():
     if train_dtype in (torch.float16, torch.bfloat16):
         fae = fae.to(train_dtype)
 
+    fae_train = maybe_wrap_ddp(fae, device)
+
     optimizer = torch.optim.AdamW(
-        fae.parameters(),
+        fae_train.parameters(),
         lr=config['train'].get('lr', 1e-4),
         betas=(0.9, 0.999),
         weight_decay=config['train'].get('weight_decay', 0.05),
@@ -50,8 +54,9 @@ def main():
 
     epochs = int(config['train'].get('epochs', 1))
     for epoch in range(start_epoch, epochs):
+        maybe_set_dataloader_epoch(dataloader, epoch)
         logs = train_stage1_epoch(
-            fae,
+            fae_train,
             backbone,
             dataloader,
             optimizer,
@@ -60,15 +65,18 @@ def main():
             device=device,
             lr_scheduler=scheduler,
         )
-        print(f"epoch={epoch} " + ' '.join(f"{k}={v:.4f}" for k, v in logs.items()))
-        save_checkpoint(output_dir / 'latest.pt', {
-            'epoch': epoch + 1,
-            'model': fae.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict() if scheduler is not None else None,
-            'scaler': scaler.state_dict() if scaler.is_enabled() else None,
-            'config': config,
-        })
+        if is_main_process():
+            print(f"epoch={epoch} " + ' '.join(f"{k}={v:.4f}" for k, v in logs.items()))
+            save_checkpoint(output_dir / 'latest.pt', {
+                'epoch': epoch + 1,
+                'model': fae.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict() if scheduler is not None else None,
+                'scaler': scaler.state_dict() if scaler.is_enabled() else None,
+                'config': config,
+            })
+        barrier()
+    cleanup_distributed()
 
 
 if __name__ == '__main__':

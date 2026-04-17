@@ -1,10 +1,11 @@
 import argparse
+import contextlib
 from pathlib import Path
 from typing import Any
-import contextlib
 
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from fae.backbones import build_backbone
 from fae.config import load_yaml
@@ -12,15 +13,17 @@ from fae.data import ImageFolderWithOptionalCaptions, collate_samples
 from fae.generators import build_generator_backend
 from fae.generators.common import LatentTensorSpec
 from fae.models import (
-    ClassConditioner, 
-    FeatureAutoEncoder, 
-    FrozenTextConditioner, 
-    LatentBridge, 
-    LatentBridgeSpec, 
-    NLayerDiscriminator, 
-    ViTPixelDecoder
+    ClassConditioner,
+    FeatureAutoEncoder,
+    FrozenTextConditioner,
+    IdentityLatentBridge,
+    LatentBridge,
+    LatentBridgeSpec,
+    NLayerDiscriminator,
+    ViTPixelDecoder,
 )
 from fae.utils.checkpoint import load_checkpoint
+from fae.utils.distributed import get_local_rank, get_rank, get_world_size, is_distributed
 
 
 def get_train_dtype(config):
@@ -36,6 +39,7 @@ def get_train_dtype(config):
     if name not in mapping:
         raise ValueError(f"Unsupported train.dtype={name}. Use fp32, fp16, or bf16.")
     return mapping[name]
+
 
 def get_autocast_context(config, device):
     dtype = get_train_dtype(config)
@@ -58,7 +62,10 @@ def parse_args(description: str) -> argparse.Namespace:
 
 def build_device(config: dict[str, Any]) -> torch.device:
     requested = config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+    if is_distributed() and str(requested).startswith('cuda'):
+        return torch.device('cuda', get_local_rank())
     return torch.device(requested)
+
 
 def _load_feature_stats(stats_path: str | None, input_dim: int) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     if not stats_path:
@@ -89,9 +96,14 @@ def build_fae_from_config(config: dict[str, Any], input_dim: int) -> FeatureAuto
         latent_dim=cfg.get('latent_dim', 32),
         encoder_heads=cfg.get('encoder_heads', 8),
         encoder_hidden_dim=cfg.get('encoder_hidden_dim', input_dim),
+        encoder_head_dim=cfg.get('encoder_head_dim'),
+        encoder_use_rope_2d=cfg.get('encoder_use_rope_2d', False),
         decoder_hidden_dim=cfg.get('decoder_hidden_dim', input_dim),
         decoder_layers=cfg.get('decoder_layers', 6),
         decoder_heads=cfg.get('decoder_heads', 8),
+        decoder_head_dim=cfg.get('decoder_head_dim'),
+        decoder_use_rope_2d=cfg.get('decoder_use_rope_2d', True),
+        rope_base=cfg.get('rope_base', 10000.0),
         kl_weight=cfg.get('kl_weight', 1e-6),
         normalize_features=cfg.get('normalize_features', False),
         feature_mean=feature_mean,
@@ -109,10 +121,13 @@ def build_pixel_decoder_from_config(config: dict[str, Any], input_dim: int) -> V
         hidden_dim=cfg.get('hidden_dim', 1024),
         num_layers=cfg.get('num_layers', 12),
         num_heads=cfg.get('num_heads', 16),
+        head_dim=cfg.get('head_dim'),
         mlp_ratio=cfg.get('mlp_ratio', 4.0),
+        use_rope_2d=cfg.get('use_rope_2d', True),
+        rope_base=cfg.get('rope_base', config.get('fae', {}).get('rope_base', 10000.0)),
     )
     if cfg.get("ckpt", None):
-        ckpt = torch.load(cfg["ckpt"])
+        ckpt = torch.load(cfg["ckpt"], map_location='cpu')
         decoder.load_state_dict(ckpt["model"])
     return decoder
 
@@ -124,17 +139,33 @@ def _infer_fae_hw(config: dict[str, Any]) -> tuple[int, int]:
     return side, side
 
 
-def build_bridge_from_config(config: dict[str, Any], model_spec: LatentTensorSpec) -> LatentBridge:
+def get_fae_latent_spec(config: dict[str, Any]) -> LatentTensorSpec:
     fae_h, fae_w = _infer_fae_hw(config)
+    return LatentTensorSpec(
+        channels=config['fae'].get('latent_dim', 32),
+        height=fae_h,
+        width=fae_w,
+    )
+
+
+def build_bridge_from_config(config: dict[str, Any], fae_spec: LatentTensorSpec, model_spec: LatentTensorSpec):
     bridge_cfg = config.get('bridge', {})
     spec = LatentBridgeSpec(
-        fae_dim=config['fae'].get('latent_dim', 32),
-        fae_height=bridge_cfg.get('fae_height', fae_h),
-        fae_width=bridge_cfg.get('fae_width', fae_w),
+        fae_dim=fae_spec.channels,
+        fae_height=fae_spec.height,
+        fae_width=fae_spec.width,
         model_channels=model_spec.channels,
         model_height=model_spec.height,
         model_width=model_spec.width,
     )
+    bridge_enabled = bool(bridge_cfg.get('enabled', True))
+    same_shape = (
+        spec.fae_dim == spec.model_channels
+        and spec.fae_height == spec.model_height
+        and spec.fae_width == spec.model_width
+    )
+    if (not bridge_enabled) or same_shape:
+        return IdentityLatentBridge(spec)
     return LatentBridge(
         spec,
         hidden_channels=bridge_cfg.get('hidden_channels'),
@@ -182,10 +213,21 @@ def build_dataloader(config: dict[str, Any]) -> DataLoader:
         load_truncated_images=data_cfg.get('load_truncated_images', True),
     )
     num_workers = int(train_cfg.get('num_workers', 4))
+    shuffle = bool(train_cfg.get('shuffle', True))
+    sampler = None
+    if is_distributed():
+        sampler = DistributedSampler(
+            dataset,
+            num_replicas=get_world_size(),
+            rank=get_rank(),
+            shuffle=shuffle,
+            drop_last=train_cfg.get('drop_last', False),
+        )
     return DataLoader(
         dataset,
         batch_size=train_cfg['batch_size'],
-        shuffle=train_cfg.get('shuffle', True),
+        shuffle=(sampler is None and shuffle),
+        sampler=sampler,
         num_workers=num_workers,
         pin_memory=train_cfg.get('pin_memory', True),
         persistent_workers=(num_workers > 0 and train_cfg.get('persistent_workers', True)),
