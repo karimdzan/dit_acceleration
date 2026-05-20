@@ -10,7 +10,7 @@ LICENSE
 # C extensions
 *.so
 log.*
-
+samples
 # Distribution / packaging
 .Python
 build/
