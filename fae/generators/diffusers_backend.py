@@ -119,11 +119,22 @@ class DiffusersTransformerBackend(LatentGeneratorBackend):
         if mode == "lora":
             try:
                 from peft import LoraConfig, get_peft_model
-                target_modules = ["to_q", "to_k", "to_v", "to_out.0", "q_proj", "k_proj", "v_proj", "o_proj"]
+                candidate_suffixes = [
+                    "to_q", "to_k", "to_v", "to_out.0", "q_proj", "k_proj", "v_proj", "o_proj",
+                    "qkv", "proj_in", "proj_out", "attn1.to_q", "attn1.to_k", "attn1.to_v", "attn1.to_out.0",
+                    "attn2.to_q", "attn2.to_k", "attn2.to_v", "attn2.to_out.0",
+                ]
+                discovered = []
+                for module_name, _ in self.model.named_modules():
+                    if any(module_name.endswith(suffix) for suffix in candidate_suffixes):
+                        discovered.append(module_name)
+                target_modules = sorted(set(discovered or candidate_suffixes))
                 lora_cfg = LoraConfig(r=16, lora_alpha=16, target_modules=target_modules, lora_dropout=0.0, bias="none")
                 self.model = get_peft_model(self.model, lora_cfg)
             except Exception as exc:
-                raise RuntimeError("Failed to enable LoRA. Install peft and ensure the backend modules expose supported attention projections.") from exc
+                raise RuntimeError(
+                    "Failed to enable LoRA. Install peft and ensure the backend exposes supported projection modules."
+                ) from exc
         if hasattr(self.model, "enable_gradient_checkpointing"):
             self.model.enable_gradient_checkpointing()
 

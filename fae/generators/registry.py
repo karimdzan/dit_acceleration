@@ -2,11 +2,12 @@ from typing import Any
 
 from .common import LatentTensorSpec
 from .diffusers_backend import DiffusersBackendConfig, DiffusersTransformerBackend
-from .internal import InternalLatentDiTBackend
+from .internal import InternalDiTDHBackend, InternalLatentDiTBackend
 
 
 _REGISTRY = {
     "internal_dit": "internal_dit",
+    "internal_dit_dh": "internal_dit_dh",
     "diffusers_dit": "diffusers_dit",
     "diffusers_sd3": "diffusers_sd3",
     "diffusers_sana": "diffusers_sana",
@@ -35,6 +36,28 @@ def build_generator_backend(config: dict[str, Any], bridge_spec: LatentTensorSpe
             time_shift=gen_cfg.get("time_shift", 0.0),
             head_dim=gen_cfg.get("head_dim"),
             use_rope_2d=gen_cfg.get("use_rope_2d", False),
+        )
+    if name == "internal_dit_dh":
+        if bridge_spec is None:
+            raise ValueError("bridge_spec is required for internal_dit_dh.")
+        return InternalDiTDHBackend(
+            spec=bridge_spec,
+            hidden_size=tuple(gen_cfg.get("hidden_size", [1152, 2048])),
+            depth=tuple(gen_cfg.get("depth", [28, 2])),
+            num_heads=tuple(gen_cfg.get("num_heads", [16, 16])),
+            mlp_ratio=gen_cfg.get("mlp_ratio", 4.0),
+            num_classes=gen_cfg.get("num_classes", config.get("conditioning", {}).get("num_classes", 1000)),
+            class_dropout_prob=gen_cfg.get("class_dropout_prob", 0.1),
+            use_qknorm=gen_cfg.get("use_qknorm", False),
+            use_swiglu=gen_cfg.get("use_swiglu", True),
+            use_rope=gen_cfg.get("use_rope", True),
+            use_rmsnorm=gen_cfg.get("use_rmsnorm", True),
+            wo_shift=gen_cfg.get("wo_shift", False),
+            use_pos_embed=gen_cfg.get("use_pos_embed", True),
+            objective=gen_cfg.get("objective", "linear_velocity"),
+            prediction_type=gen_cfg.get("prediction_type", "velocity"),
+            time_dist_type=gen_cfg.get("time_dist_type", config.get("transport", {}).get("time_dist_type", "logit-normal_0_1")),
+            loss_weight=gen_cfg.get("loss_weight", config.get("transport", {}).get("loss_weight")),
         )
     if name in {"diffusers_dit", "diffusers_sd3", "diffusers_sana"}:
         return DiffusersTransformerBackend(

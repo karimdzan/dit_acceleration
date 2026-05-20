@@ -5,19 +5,11 @@ encoder:
   prefix_tokens: 1
   patch_size: 16
 fae:
-  latent_dim: 32
-  encoder_heads: 24
-  encoder_hidden_dim: 6144
-  encoder_head_dim: 256
-  encoder_use_rope_2d: false
-  decoder_hidden_dim: 1024
-  decoder_layers: 6
-  decoder_heads: 16
-  decoder_head_dim: 64
-  decoder_use_rope_2d: true
+  noise_tau: 0.0
+  reshape_to_2d: true
+  normalize_latents: true
+  latent_stats_path: checkpoints/latent_stats/dinov2_large_spatial.pt
   rope_base: 10000.0
-  normalize_features: true
-  feature_stats_path: checkpoints/feature_stats/dinov2_features.pt
 pixel_decoder:
   image_size: 256
   patch_size: 16
@@ -42,11 +34,13 @@ generator:
   sample_size: 16
   in_channels: 32
 bridge:
-  enabled: false
+  enabled: true
+  hidden_channels: 256
+  num_res_blocks: 2
+  resize_mode: bilinear
 stage3:
-  fae_checkpoint: checkpoints/stage1_dinov2/latest.pt
-  pixel_decoder_checkpoint: checkpoints/stage2_finetune/dinov2/latest.pt
-  generator_checkpoint: checkpoints/stage3_internal/dinov2/latest.pt
+  autoencoder_checkpoint: checkpoints/stage2_rae_finetune/dinov2_large/latest.pt
+  generator_checkpoint: checkpoints/stage3_internal/dinov2_large/latest.pt
   bridge_cycle_weight: 0.0
 train:
   batch_size: 8
@@ -54,10 +48,11 @@ train:
   lr: 1.0e-4
   weight_decay: 0.05
   epochs: 100
-  output_dir: checkpoints/stage3_internal/dinov2
+  output_dir: checkpoints/stage3_internal/dinov2_large
   dtype: bf16
+  skip_oom_batches: true
 data:
   root: /tmp/data
 sampling:
   num_steps: 30
-  output_dir: samples/internal_dinov2
+  output_dir: samples/internal_dinov2_large

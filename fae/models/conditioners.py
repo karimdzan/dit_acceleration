@@ -45,9 +45,6 @@ class FrozenTextConditioner(nn.Module):
         pooled = hidden.mean(dim=1)
         return self.proj(pooled)
 
-    def forward(self, texts: Sequence[str], device: torch.device) -> torch.Tensor:
-        return self.encode_texts(texts, device=device)
-
 
 def build_internal_conditioning(
     labels: list[int | None] | None,
@@ -55,16 +52,21 @@ def build_internal_conditioning(
     device: torch.device,
     class_conditioner: ClassConditioner | None = None,
     text_conditioner: FrozenTextConditioner | None = None,
+    include_raw_class_labels: bool = False,
 ) -> ConditioningBundle | None:
     bundle = ConditioningBundle()
     has_any = False
-    if class_conditioner is not None and labels is not None and all(label is not None for label in labels):
+    if labels is not None and all(label is not None for label in labels):
         label_tensor = torch.tensor(labels, device=device, dtype=torch.long)
-        bundle.class_labels = label_tensor
-        bundle.vector = class_conditioner(label_tensor)
-        has_any = True
+        if include_raw_class_labels:
+            bundle.class_labels = label_tensor
+            has_any = True
+        if class_conditioner is not None:
+            bundle.class_labels = label_tensor
+            bundle.vector = class_conditioner(label_tensor)
+            has_any = True
     if text_conditioner is not None and captions is not None and all(caption is not None for caption in captions):
-        text_vec = text_conditioner(captions, device=device)
+        text_vec = text_conditioner.encode_texts(captions, device=device)
         bundle.vector = text_vec if bundle.vector is None else bundle.vector + text_vec
         has_any = True
     return bundle if has_any else None

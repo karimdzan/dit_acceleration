@@ -1,48 +1,56 @@
+# 1xH100-friendly RAE stage-1 config aligned to the official DINOv2-B + ViT-XL recipe.
 device: cuda
 encoder:
   name: dinov2
-  model_name: /tmp/hf/hub/models--facebook--dinov2-large/snapshots/a18992645e496e6d21ea90829a6652ed6f75ec47
-  prefix_tokens: 1
+  model_name: facebook/dinov2-with-registers-base
+  input_size: 224
+  prefix_tokens: 5
   patch_size: 14
 fae:
-  latent_dim: 32
-  encoder_heads: 24
-  encoder_hidden_dim: 6144
-  encoder_head_dim: 256
-  encoder_use_rope_2d: false
-  decoder_hidden_dim: 1024
-  decoder_layers: 6
-  decoder_heads: 16
-  decoder_head_dim: 64
-  decoder_use_rope_2d: true
+  noise_tau: 0.8
+  reshape_to_2d: true
+  normalize_latents: true
+  latent_grid_size: 16
+  latent_stats_path: checkpoints/latent_stats/dinov2_wreg_base_imagenet1k.pt
   rope_base: 10000.0
-  kl_weight: 0.0
-  normalize_features: false
-  feature_stats_path: null
-  feature_eps: 1.0e-6
 pixel_decoder:
-  image_size: 224
-  patch_size: 14
-  hidden_dim: 1024
-  num_layers: 24
+  image_size: 256
+  patch_size: 16
+  hidden_dim: 1152
+  num_layers: 28
   num_heads: 16
-  head_dim: 64
+  head_dim: 72
+  mlp_ratio: 4.0
   use_rope_2d: true
+stage1:
+  use_lpips: true
+  perceptual_weight: 0.1
+  use_gan: true
+  disc_lr: 1.0e-4
+  adversarial_weight: 0.1
+  use_adaptive_gan_weight: true
+  lpips_start_epoch: 0
+  disc_start_epoch: 4
+  adv_start_epoch: 8
 train:
-  batch_size: 64
+  batch_size: 8
+  grad_accum_steps: 32
   num_workers: 8
   lr: 1.0e-4
-  weight_decay: 0.05
-  epochs: 300
-  lr_scheduler: constant
-  warmup_epochs: 1
+  betas: [0.9, 0.999]
+  weight_decay: 0.0
+  epochs: 160
+  ema_decay: 0.9999
+  clip_grad: 1.0
+  lr_scheduler: cosine
+  warmup_epochs: 8
   min_lr_ratio: 0.1
-  output_dir: checkpoints/stage1_dinov2
-  dtype: fp32
+  output_dir: checkpoints/stage1_rae/dinov2_wreg_base_vitxl_1xh100
+  dtype: bf16
+  skip_oom_batches: true
 data:
   root: /tmp/data
-  max_samples: 64
 compute_features:
-  output: checkpoints/latent_stats/dinov2_imagenet1k.pt
+  output: checkpoints/latent_stats/dinov2_wreg_base_imagenet1k.pt
   max_batches: null
   channel_only: false

@@ -1,5 +1,5 @@
-# 1xH100-tuned ImageNet-1K 256 class-conditional DiT^DH-XL on RAE latents.
-# Architecture matches the official RAE DiT^DH-XL release; optimization is scaled down for a single H100.
+# ImageNet-1K 256 DiT^DH-XL training using the official pretrained RAE decoder checkpoint.
+# This avoids a scratch stage-1 run and uses the released DINOv2-with-registers base RAE decoder path.
 device: cuda
 encoder:
   name: dinov2
@@ -12,8 +12,13 @@ fae:
   reshape_to_2d: true
   normalize_latents: true
   latent_grid_size: 16
-  latent_stats_path: checkpoints/latent_stats/dinov2_wreg_base_imagenet1k.pt
-  rope_base: 10000.0
+  pretrained:
+    preset: dinov2_wreg_base_imagenet256_vitxl_n08
+    repo_id: nyu-visionx/RAE-collections
+    # Point this at a repo already downloaded with `hf download` or a cache snapshot.
+    snapshot_dir: /path/to/RAE-collections
+    load_ema: true
+    strict: false
 pixel_decoder:
   image_size: 256
   patch_size: 16
@@ -56,7 +61,6 @@ guidance:
   t_min: 0.0
   t_max: 1.0
 stage3:
-  autoencoder_checkpoint: checkpoints/stage1_rae/dinov2_wreg_base_vitxl_1xh100/latest.pt
   generator_checkpoint: checkpoints/stage3_ditdh_imagenet256_1xh100/latest.pt
   bridge_cycle_weight: 0.0
 train:

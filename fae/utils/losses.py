@@ -32,7 +32,11 @@ class VGGPerceptualLoss(nn.Module):
             p.requires_grad = False
 
     def _preprocess(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.clamp(-1.0, 1.0).add(1.0).mul(0.5)
+        x = x.float()
+        if float(x.detach().amin()) < -0.05 or float(x.detach().amax()) > 1.05:
+            x = x.clamp(-1.0, 1.0).add(1.0).mul(0.5)
+        else:
+            x = x.clamp(0.0, 1.0)
         x = F.interpolate(x, size=(self.resize_to, self.resize_to), mode="bilinear", align_corners=False)
         return (x - self.mean) / self.std
 

@@ -5,7 +5,10 @@ from torchvision.utils import save_image
 
 
 def denorm_unit_interval(x: torch.Tensor) -> torch.Tensor:
-    return x.detach().float().clamp(-1.0, 1.0).add(1.0).mul(0.5).clamp(0.0, 1.0)
+    x = x.detach().float()
+    if float(x.amin()) < -0.05 or float(x.amax()) > 1.05:
+        return x.clamp(-1.0, 1.0).add(1.0).mul(0.5).clamp(0.0, 1.0)
+    return x.clamp(0.0, 1.0)
 
 
 def save_stage2_grid(

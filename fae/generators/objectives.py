@@ -93,3 +93,46 @@ class FlowMatchingObjective:
             v = model(x, t, conditioning)
             x = x + dt * v
         return x
+
+
+class LinearVelocityTransportObjective:
+    def __init__(self, time_dist_type: str = "uniform", loss_weight: str | None = None) :
+        self.time_dist_type = str(time_dist_type)
+        self.loss_weight = loss_weight
+
+    def sample_timesteps(self, batch_size: int, device: torch.device, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+        if self.time_dist_type in {"uniform", "flat"}:
+            return torch.rand(batch_size, device=device, dtype=dtype)
+        if self.time_dist_type in {"logit-normal_0_1", "logit_normal_0_1", "logit-normal", "logit_normal"}:
+            return torch.sigmoid(torch.randn(batch_size, device=device, dtype=dtype))
+        raise ValueError(f"Unsupported time_dist_type={self.time_dist_type}")
+
+    def _loss_weight_tensor(self, t: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if self.loss_weight in {None, "none"}:
+            return torch.ones_like(target[:, :1])
+        if self.loss_weight == "snr":
+            w = 1.0 / torch.clamp(t * (1.0 - t), min=1e-3)
+            return w[:, None, None, None].to(dtype=target.dtype)
+        raise ValueError(f"Unsupported loss_weight={self.loss_weight}")
+
+    def training_loss(self, model, x0: torch.Tensor, conditioning: ConditioningBundle | None = None) -> LossOutput:
+        b = x0.shape[0]
+        t = self.sample_timesteps(b, x0.device, dtype=torch.float32)
+        noise = torch.randn_like(x0)
+        x_t = (1.0 - t[:, None, None, None].to(x0.dtype)) * x0 + t[:, None, None, None].to(x0.dtype) * noise
+        target = noise - x0
+        pred = model(x_t, t, conditioning)
+        weight = self._loss_weight_tensor(t, target)
+        loss = (weight * (pred.float() - target.float()).square()).mean()
+        return LossOutput(loss=loss, logs={"loss": float(loss.detach().cpu())})
+
+    @torch.no_grad()
+    def sample(self, model, latent_shape: tuple[int, int, int, int], device: torch.device, conditioning: ConditioningBundle | None = None, num_steps: int = 50) -> torch.Tensor:
+        x = torch.randn(latent_shape, device=device)
+        ts = torch.linspace(1.0, 0.0, num_steps + 1, device=device)
+        for i in range(num_steps):
+            t = torch.full((latent_shape[0],), ts[i].item(), device=device)
+            dt = ts[i + 1] - ts[i]
+            v = model(x, t, conditioning)
+            x = x + dt * v
+        return x

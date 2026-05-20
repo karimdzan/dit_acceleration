@@ -44,4 +44,7 @@ class ViTPixelDecoder(nn.Module):
         for block in self.blocks:
             x = block(x, grid_size=grid_size)
         x = self.patch_head(self.norm(x))
-        return unpatchify(x, patch_size=self.patch_size, image_size=(self.image_size, self.image_size))
+        grid_h, grid_w = infer_hw_from_tokens(x.shape[1])
+        image_h = grid_h * self.patch_size
+        image_w = grid_w * self.patch_size
+        return unpatchify(x, patch_size=self.patch_size, image_size=(image_h, image_w))

@@ -1,143 +1,68 @@
-# FAE-Adapters: Feature Auto-Encoders for Frozen Vision Encoders + Pretrained DiTs
+# RAE + Sana Sprint
 
-This repository implements the core method from **"One Layer Is Enough: Adapting Pretrained Visual Encoders for Image Generation"** and rewrites the generator stage around a **backend registry** so you can plug FAE latents into multiple diffusion-transformer families.
+## 1. Reproduce official RAE reconstruction quality first
 
-It keeps the paper's main tokenizer design:
-- a **frozen visual encoder** (DINOv2, SigLIP2, ViT-MAE)
-- a **single-attention latent encoder**
-- a **6-layer feature decoder**
-- a **ViT-style pixel decoder**
-- a generator stage trained or finetuned **directly on the compact FAE latents**
+The current official NYU/VISIONx RAE checkpoints are available in two layouts:
 
-The new part is the generator abstraction:
-- **internal** latent DiT for smoke tests and full local training
-- **diffusers/DiT** backend for class-conditional latent diffusion transformers
-- **diffusers/SD3** backend for MMDiT-style text-conditioned models
-- **diffusers/Sana / Sana-Sprint** backend for small linear-DiT style text-conditioned models
-- a **bridge module** that maps between FAE token latents and the latent tensor format expected by the target generator
+- **Recommended reproduction path:** standalone Diffusers repos such as `nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08`. These expose `AutoencoderRAE` in `config.json` and store weights as `diffusion_pytorch_model.safetensors`.
+- **Archival/original bundle:** `nyu-visionx/RAE-collections`, a large bundle with legacy PyTorch files such as `decoders/dinov2/wReg_base/ViTXL_n08/model.pt`, `DiTs/.../stage2_model.pt`, and `stats/`.
 
-## Implementation Details
+### Build a deterministic ImageNet-1K 256 subsample
 
-### Stage 1: feature auto-encoder
-- frozen vision encoders:
-  - `dinov2`
-  - `siglip2`
-  - `vit_mae`
-- single self-attention latent encoder
-- 6-layer transformer feature decoder
-- diagonal Gaussian posterior + KL regularization
-
-### Stage 2: pixel decoder
-- ViT-style pixel decoder
-- Gaussian embedding decoder pretraining
-- fine-tuning on reconstructed FAE features
-- optional GAN discriminator/perceptual loss
-
-### Stage 3: generator backends
-- `internal_dit`: simple in-repo latent DiT over image-like latent tensors
-- `diffusers_dit`: wrapper for `diffusers.DiTTransformer2DModel`
-- `diffusers_sd3`: wrapper for `diffusers.SD3Transformer2DModel`
-- `diffusers_sana`: wrapper for `diffusers.SanaTransformer2DModel`
-
-### Conditioning modes
-- class labels
-- pooled text embeddings for the internal backend
-- native prompt encoding through a diffusers pipeline for SD3 / Sana / Sana-Sprint
-
-## Key design choices
-
-### 1) Bridge instead of hard-coded latent format
-FAE produces token latents `[B, N, d]`. Most pretrained diffusion transformers expect image-like latent tensors `[B, C, H, W]` with model-specific `C`, `H`, `W`, and sometimes fixed positional embeddings. The bridge converts between these spaces with:
-- token/grid reshaping
-- spatial resizing
-- learnable channel projection
-- optional residual conv blocks
-
-### 2) Backend contracts instead of one-off patches
-Every generator backend exposes the same interface:
-- `training_loss(latents, conditioning)`
-- `sample_latents(batch_size, conditioning)`
-- `latent_spec()`
-- `encode_prompts(prompts)` when the backend owns the prompt encoder
-
-Adding a new backend means implementing a small subclass instead of rewriting the whole training pipeline.
-
-### 3) Objective adapters
-Different transformer families use different denoising objectives. The code supports:
-- standard diffusion (`epsilon`, `v_prediction`, `sample`)
-- flow-matching style training
-- distilled / consistency-style inference hooks for already-distilled checkpoints
-
-## Supported backends
-
-| Backend | Use case | Notes |
-|---|---|---|
-| `internal_dit` | local debugging, unit tests, small-scale experiments | no external checkpoint required |
-| `diffusers_dit` | class-conditional pretrained DiT | best first target for testing FAE + pretrained DiT |
-| `diffusers_sd3` | text-conditioned MMDiT | requires SD3 pipeline assets and native prompt encoding |
-| `diffusers_sana` | text-conditioned Sana or Sana-Sprint | good small-model target on H100; supports BF16 pipelines |
-
-## Repository layout
-
-```text
-fae/
-  backbones/          frozen vision encoders
-  models/             FAE, pixel decoder, posterior, bridge
-  generators/         backend registry + diffusion wrappers
-  training/           stage 1/2/3 loops
-  scripts/            train / sample entrypoints
-  utils/              checkpointing, image utils, loss helpers
-configs/
-  encoder/
-  train/
-tests/
-```
-
-## Install
+The data is expected in class folders such as `/tmp/data/abacus`, `/tmp/data/...`.
 
 ```bash
-pip install -e .
+python -m fae.scripts.make_imagenet256_subset \
+  --data-root /tmp/data \
+  --out runs/imagenet256_subset_8pc \
+  --samples-per-class 8 \
+  --seed 0 \
+  --symlink
 ```
 
-Optional but recommended for external backends:
+This writes `manifest.csv` and `summary.json`. With `--symlink`, it also creates an ImageNet-like subset under `runs/imagenet256_subset_8pc/images/`.
+
+### Load official RAE from Hugging Face and measure reconstruction FID
 
 ```bash
-pip install diffusers>=0.37.0 transformers accelerate safetensors peft
+python -m fae.scripts.eval_rae_reconstruction_fid \
+  --manifest runs/imagenet256_subset_8pc/manifest.csv \
+  --model-id nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08 \
+  --batch-size 8 \
+  --dtype bf16 \
+  --out runs/rae_rfid_8pc \
+  --save-png
 ```
 
-## Quickstart
+Outputs:
 
-### Stage 1
+- `metrics.json` with rFID and latent summary stats
+- optional `real_png/` and `recon_png/` folders for visual inspection
+
+Install requirements:
+
 ```bash
-python -m fae.scripts.train_stage1 --config configs/train/stage1_dinov2.yaml
+pip install -U torch torchvision diffusers transformers accelerate safetensors torchmetrics torch-fidelity pillow tqdm
 ```
 
-### Stage 2
+## 2. Apply RAE to Sana-Sprint
+
+The first complete integration is a frozen-model latent bridge:
+
+- freeze the official HF `AutoencoderRAE`
+- freeze Sana-Sprint VAE and transformer
+- encode each image with RAE
+- encode the same image with Sana-Sprint VAE
+- train `ConvBridge(RAE latent -> Sana latent)` by MSE
+- save `rae_to_sana_bridge.pt`
+
 ```bash
-python -m fae.scripts.train_stage2 --config configs/train/stage2_pixel_gaussian.yaml
-python -m fae.scripts.train_stage2 --config configs/train/stage2_pixel_finetune.yaml
+python -m fae.scripts.train_sana_sprint_rae_bridge \
+  --manifest runs/imagenet256_subset_8pc/manifest.csv \
+  --rae-model-id nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08 \
+  --sana-model-id Efficient-Large-Model/Sana_Sprint_0.6B_1024px_diffusers \
+  --image-size 1024 \
+  --batch-size 4 \
+  --steps 1000 \
+  --out runs/sana_rae_bridge
 ```
-
-### Stage 3 with internal backend
-```bash
-python -m fae.scripts.train_stage3 --config configs/train/stage3_internal_class.yaml
-```
-
-### Stage 3 with Sana-Sprint bridge finetuning
-```bash
-python -m fae.scripts.train_stage3 --config configs/train/stage3_sana_sprint_0p6b.yaml
-```
-
-### Sampling through the FAE decoder stack
-```bash
-python -m fae.scripts.sample --config configs/train/stage3_sana_sprint_0p6b.yaml --prompt "a tiny astronaut hatching from an egg on the moon"
-```
-
-## Important
-
-This repo is designed to make FAE-style latent adaptation **easy to test on pretrained DiT-family backbones**. It does **not** claim to fully reproduce every original backend training recipe. In particular:
-- SD3 native training uses a full MMDiT text stack
-- Sana-Sprint is a distilled few-step model with its own consistency/distillation recipe
-- this repo lets you **reuse those pretrained transformers as backends**, finetune bridges, and optionally add LoRA / partial finetuning
-
-That is the intended experimental interface for testing the paper's method on modern pretrained diffusion transformers.

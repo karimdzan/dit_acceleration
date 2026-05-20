@@ -5,10 +5,9 @@ from tqdm import tqdm
 from fae.backbones.base import FrozenVisionBackbone
 from fae.generators.base import LatentGeneratorBackend
 from fae.models.conditioners import ClassConditioner, FrozenTextConditioner, build_internal_conditioning
-from fae.models.fae import FeatureAutoEncoder
+from fae.models.rae import RepresentationAutoEncoder
 from fae.models.latent_bridge import BaseLatentAdapter
-from fae.training.common import prepare_backbone_inputs
-from fae.utils.distributed import is_main_process, reduce_mean_dict, unwrap_model
+from fae.training.common import clip_grad_norm_, get_current_lr, prepare_backbone_inputs
 
 
 def _build_conditioning(
@@ -18,7 +17,6 @@ def _build_conditioning(
     class_conditioner: ClassConditioner | None = None,
     text_conditioner: FrozenTextConditioner | None = None,
 ):
-    backend = unwrap_model(backend)
     if getattr(backend, "uses_native_prompt_encoder", False):
         labels = batch.get("labels")
         captions = batch.get("captions")
@@ -39,12 +37,13 @@ def _build_conditioning(
         device=device,
         class_conditioner=class_conditioner,
         text_conditioner=text_conditioner,
+        include_raw_class_labels=bool(getattr(backend, "uses_raw_class_labels", False)),
     )
 
 
 def train_stage3_epoch(
     backend: LatentGeneratorBackend,
-    fae: FeatureAutoEncoder,
+    fae: RepresentationAutoEncoder,
     bridge: BaseLatentAdapter,
     backbone: FrozenVisionBackbone,
     dataloader: DataLoader,
@@ -57,6 +56,10 @@ def train_stage3_epoch(
     conditioner_optimizer: torch.optim.Optimizer | None = None,
     bridge_cycle_weight: float = 0.0,
     skip_oom_batches: bool = True,
+    accumulation_steps: int = 1,
+    grad_clip: float | None = None,
+    lr_scheduler=None,
+    ema=None,
 ) -> dict[str, float]:
     backend.train()
     bridge.train()
@@ -64,11 +67,16 @@ def train_stage3_epoch(
     backbone.eval()
     if class_conditioner is not None:
         class_conditioner.train()
-    running = {"loss": 0.0, "backend_loss": 0.0, "bridge_cycle": 0.0}
+    running = {"loss": 0.0, "backend_loss": 0.0, "bridge_cycle": 0.0, "grad_norm": 0.0}
     count = 0
+    accumulation_steps = max(int(accumulation_steps), 1)
     fae_param = next(fae.parameters(), None)
     fae_dtype = fae_param.dtype if fae_param is not None else torch.float32
-    for batch in tqdm(dataloader, desc="stage3", leave=False, disable=not is_main_process()):
+    optimizer.zero_grad(set_to_none=True)
+    if conditioner_optimizer is not None:
+        conditioner_optimizer.zero_grad(set_to_none=True)
+
+    for step_idx, batch in enumerate(tqdm(dataloader, desc="stage3", leave=False)):
         if batch is None:
             continue
         images = batch["images"]
@@ -77,28 +85,42 @@ def train_stage3_epoch(
             with torch.no_grad():
                 with context:
                     features = backbone.forward_features(backbone_inputs).tokens.to(device=device, dtype=fae_dtype)
-                    z_tokens, _ = fae.encode(features)
+                    z_tokens = fae.encode(features, add_noise=False)
             model_latents = bridge.to_model_latents(z_tokens)
             conditioning = _build_conditioning(backend, batch, device=device, class_conditioner=class_conditioner, text_conditioner=text_conditioner)
 
-            optimizer.zero_grad(set_to_none=True)
-            if conditioner_optimizer is not None:
-                conditioner_optimizer.zero_grad(set_to_none=True)
             with context:
-                out = backend(model_latents, conditioning=conditioning)
+                out = backend.training_loss(model_latents, conditioning=conditioning)
                 bridge_cycle = bridge.cycle_loss(z_tokens) if bridge_cycle_weight > 0 else torch.zeros((), device=device)
-                total = out.loss + bridge_cycle_weight * bridge_cycle
+                total = (out.loss + bridge_cycle_weight * bridge_cycle) / accumulation_steps
             if scaler.is_enabled():
                 scaler.scale(total).backward()
-                scaler.step(optimizer)
-                if conditioner_optimizer is not None:
-                    scaler.step(conditioner_optimizer)
-                scaler.update()
             else:
                 total.backward()
-                optimizer.step()
+
+            grad_norm = 0.0
+            if ((step_idx + 1) % accumulation_steps == 0) or (step_idx + 1 == len(dataloader)):
+                if scaler.is_enabled():
+                    scaler.unscale_(optimizer)
+                    if conditioner_optimizer is not None:
+                        scaler.unscale_(conditioner_optimizer)
+                grad_norm = clip_grad_norm_(list(bridge.parameters()) + [p for p in backend.parameters() if p.requires_grad], grad_clip)
+                if scaler.is_enabled():
+                    scaler.step(optimizer)
+                    if conditioner_optimizer is not None:
+                        scaler.step(conditioner_optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                    if conditioner_optimizer is not None:
+                        conditioner_optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
                 if conditioner_optimizer is not None:
-                    conditioner_optimizer.step()
+                    conditioner_optimizer.zero_grad(set_to_none=True)
+                if lr_scheduler is not None:
+                    lr_scheduler.step()
+                if ema is not None:
+                    ema.update(backend)
         except torch.cuda.OutOfMemoryError:
             if not skip_oom_batches:
                 raise
@@ -116,8 +138,11 @@ def train_stage3_epoch(
             torch.cuda.empty_cache()
             continue
 
-        running["loss"] += float(total.detach().cpu())
+        running["loss"] += float((total * accumulation_steps).detach().cpu())
         running["backend_loss"] += out.logs.get("loss", float(out.loss.detach().cpu()))
         running["bridge_cycle"] += float(bridge_cycle.detach().cpu())
+        running["grad_norm"] += float(grad_norm)
         count += 1
-    return reduce_mean_dict(running, count=count, device=device)
+    out_logs = {k: v / max(count, 1) for k, v in running.items()}
+    out_logs['lr'] = get_current_lr(optimizer)
+    return out_logs

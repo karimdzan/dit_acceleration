@@ -1,5 +1,4 @@
 import argparse
-import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -31,26 +30,30 @@ except Exception:
         array = image.clamp(0, 1).mul(255).byte().permute(1, 2, 0).cpu().numpy()
         Image.fromarray(array).save(path)
 
+from fae.config import load_yaml
+from fae.scripts.common import (
+    build_backbone_from_config,
+    build_device,
+    build_fae_from_config,
+    get_autocast_context,
+    get_train_dtype,
+)
+from fae.training.common import prepare_backbone_inputs
+from fae.utils.pretrained import initialize_rae_from_pretrained
+
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Test reconstruction with backbone + RAE decoder.")
-    parser.add_argument("--repo-root", type=str, required=True, help="Path to the repo root that contains the `fae/` package.")
-    parser.add_argument("--config", type=str, required=True, help="Stage-1/2/3 config YAML.")
+    parser = argparse.ArgumentParser(description="Test reconstruction with a pretrained RAE decoder.")
+    parser.add_argument("--config", type=str, required=True, help="Config YAML that defines encoder + RAE.")
     parser.add_argument("--input", type=str, required=True, help="Image path or directory of images.")
     parser.add_argument("--output-dir", type=str, default="recon_test_outputs", help="Where to save reconstructions.")
-    parser.add_argument("--autoencoder-ckpt", type=str, default=None, help="Override autoencoder checkpoint.")
-    parser.add_argument("--decoder-ckpt", type=str, default=None, help="Override decoder-only checkpoint.")
+    parser.add_argument("--autoencoder-ckpt", type=str, default=None, help="Optional full autoencoder checkpoint override.")
+    parser.add_argument("--decoder-ckpt", type=str, default=None, help="Optional decoder-only checkpoint override.")
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap when --input is a directory.")
     parser.add_argument("--device", type=str, default=None, help="Override device, e.g. cpu or cuda:0.")
     parser.add_argument("--dtype", type=str, default=None, choices=["fp32", "fp16", "bf16"], help="Override inference dtype.")
     parser.add_argument("--save-individual", action="store_true", help="Save each input/reconstruction pair separately.")
     return parser.parse_args()
-
-
-def add_repo_to_path(repo_root: Path):
-    repo_root = repo_root.resolve()
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
 
 
 def collect_images(input_path: Path, max_images: int | None = None) -> list[Path]:
@@ -89,22 +92,8 @@ def psnr(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return -10.0 * torch.log10(torch.clamp(mse, min=1e-10))
 
 
-if __name__ == "__main__":
+def main() :
     args = parse_args()
-    repo_root = Path(args.repo_root)
-    add_repo_to_path(repo_root)
-
-    from fae.config import load_yaml
-    from fae.scripts.common import (
-        build_backbone_from_config,
-        build_device,
-        build_fae_from_config,
-        get_autocast_context,
-        get_train_dtype,
-    )
-    from fae.training.common import prepare_backbone_inputs
-    from fae.utils.pretrained import initialize_rae_from_pretrained
-
     config = load_yaml(args.config)
     if args.device is not None:
         config["device"] = args.device
@@ -145,7 +134,8 @@ if __name__ == "__main__":
             device=device,
             dtype=next(autoencoder.parameters()).dtype,
         )
-        preds = autoencoder(features, add_noise=False).reconstructed_images
+        encoded = autoencoder.encode(features, add_noise=False)
+        preds = autoencoder.decode(encoded)
 
     pred_fp32 = preds.float()
     target_fp32 = targets.float()
@@ -157,14 +147,14 @@ if __name__ == "__main__":
     report_lines.append(f"device: {device}")
     report_lines.append(f"dtype: {train_dtype}")
     report_lines.append(f"num_images: {len(input_paths)}")
-    report_lines.append(f"autoencoder_checkpoint: {ckpt_path}")
-    report_lines.append("")
+    report_lines.append(f"checkpoint: {ckpt_path}")
+    report_lines.append(f"load_mode: {load_info.get('mode')}")
     report_lines.append(
         "latent stats: "
         f"backbone_mean={features.float().mean().item():.6f}, "
         f"backbone_std={features.float().std().item():.6f}, "
-        f"latent_mean={autoencoder.encode(features, add_noise=False).float().mean().item():.6f}, "
-        f"latent_std={autoencoder.encode(features, add_noise=False).float().std().item():.6f}"
+        f"encoded_mean={encoded.float().mean().item():.6f}, "
+        f"encoded_std={encoded.float().std().item():.6f}"
     )
     report_lines.append("")
     report_lines.append("per-image metrics:")
@@ -199,3 +189,7 @@ if __name__ == "__main__":
     print("Saved:")
     print(f"  grid:    {output_dir / 'reconstruction_grid.png'}")
     print(f"  metrics: {output_dir / 'metrics.txt'}")
+
+
+if __name__ == "__main__":
+    main()
