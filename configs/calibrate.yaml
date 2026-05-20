@@ -1,0 +1,26 @@
+defaults:
+  - model: sana_sprint
+  - dataset: imagenet
+  - _self_
+
+mode: block_cache  # block_cache | linear_attn_state | sparsity | sana_ffn_groups
+
+num_prompts: 256
+num_steps: 4
+batch_size: 4
+seed: 0
+
+output: ???
+
+target_sparsity: 0.5
+samples_per_batch: 4096
+num_batches: 16
+
+keep_ratio: 0.90
+group_size: 32
+
+hydra:
+  run:
+    dir: outputs/calibrate/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: false

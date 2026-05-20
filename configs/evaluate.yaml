@@ -1,0 +1,17 @@
+defaults:
+  - dataset: imagenet
+  - _self_
+
+samples_dir: ???
+output: ???
+ref_name: ???
+samples_per_class: 50
+skip_clip: false
+clip_model_name: ViT-L-14
+clip_pretrained: openai
+
+hydra:
+  run:
+    dir: outputs/evaluate/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: false

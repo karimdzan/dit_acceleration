@@ -1,0 +1,2 @@
+name: sana_sprint
+checkpoint: ${oc.env:SANA_SPRINT_PATH,Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers}

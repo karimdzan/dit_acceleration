@@ -1,0 +1,20 @@
+defaults:
+  - _self_
+
+task: coco30k  # coco30k | imagenet_val | fid_stats
+
+local_dir: data/coco_val2014_30k
+src_dir: null
+register_fid: coco_val2014_30k
+fid_device: cuda
+force: false
+
+samples_per_class: 50
+mode: flat
+symlink: true
+
+hydra:
+  run:
+    dir: outputs/prepare/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: false

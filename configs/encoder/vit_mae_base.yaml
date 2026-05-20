@@ -1,4 +1,0 @@
-name: vit_mae
-model_name: facebook/vit-mae-base
-prefix_tokens: 1
-patch_size: 16

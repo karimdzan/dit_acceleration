@@ -1,0 +1,6 @@
+mode: dynamic
+keep_ratio: 0.90
+group_size: 32
+min_skip_ratio: 0.05
+plan_path: null
+verbose: true

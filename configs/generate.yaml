@@ -1,0 +1,24 @@
+defaults:
+  - model: sana_sprint
+  - dataset: imagenet
+  - variant: bf16
+  - sana_ffn: null
+  - _self_
+
+num_steps: 4
+samples_per_class: 50
+batch_size: 4
+seed: 42
+
+output_dir: ???
+
+schedule_path: null
+k_per_step: 0
+sparsity_path: null
+limit: null
+
+hydra:
+  run:
+    dir: outputs/generate/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: false

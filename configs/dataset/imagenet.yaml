@@ -1,0 +1,3 @@
+name: imagenet
+val_dir: ${oc.env:IMAGENET_VAL_DIR,/tmp/data}
+coco_local_dir: null

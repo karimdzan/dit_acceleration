@@ -1,0 +1,2 @@
+name: dit_xl
+checkpoint: ${oc.env:DIT_XL_PATH,facebook/DiT-XL-2-256}

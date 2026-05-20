@@ -1,4 +1,0 @@
-name: siglip2
-model_name: google/siglip2-base-patch16-224
-prefix_tokens: 0
-patch_size: 16

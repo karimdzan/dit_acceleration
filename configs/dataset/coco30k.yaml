@@ -1,0 +1,3 @@
+name: coco30k
+val_dir: null
+coco_local_dir: ${oc.env:COCO_LOCAL_DIR,data/coco_val2014_30k}
