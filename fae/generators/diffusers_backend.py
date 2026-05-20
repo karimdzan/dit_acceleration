@@ -62,7 +62,7 @@ class DiffusersBackendConfig:
 class DiffusersTransformerBackend(LatentGeneratorBackend):
     uses_native_prompt_encoder = True
 
-    def __init__(self, cfg: DiffusersBackendConfig) -> None:
+    def __init__(self, cfg: DiffusersBackendConfig) :
         super().__init__()
         self.cfg = cfg
         self.diffusers = _optional_import_diffusers()
@@ -80,7 +80,7 @@ class DiffusersTransformerBackend(LatentGeneratorBackend):
     def _dtype(self):
         return getattr(torch, self.cfg.torch_dtype)
 
-    def _load_assets(self) -> None:
+    def _load_assets(self) :
         dtype = self._dtype()
         if self.cfg.pipeline_name_or_path:
             if not self.cfg.pipeline_class:
@@ -112,7 +112,7 @@ class DiffusersTransformerBackend(LatentGeneratorBackend):
                     subfolder=self.cfg.scheduler_subfolder,
                 )
 
-    def _configure_train_mode(self) -> None:
+    def _configure_train_mode(self) :
         mode = self.cfg.train_mode
         for p in self.model.parameters():
             p.requires_grad = mode != "frozen"

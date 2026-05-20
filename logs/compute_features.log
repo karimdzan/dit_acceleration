@@ -1,0 +1,6 @@
+
+Loading weights:   0%|          | 0/439 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 439/439 [00:00<00:00, 12112.62it/s]
+
+feature_dim=1024 tokens_processed=138195456 images=539826 batches=8435
+mean_abs=0.182571 std_mean=1.399723 std_min=0.184054

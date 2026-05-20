@@ -6,7 +6,7 @@ from torchvision import transforms
 
 
 class TargetImageTransform:
-    def __init__(self, image_size: int) -> None:
+    def __init__(self, image_size: int) :
         self.transform = transforms.Compose([
             transforms.Resize((image_size, image_size), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor(),

@@ -33,3 +33,7 @@ train:
   dtype: bf16
 data:
   root: /tmp/data
+compute_features:
+  output: checkpoints/latent_stats/vit_mae_imagenet1k.pt
+  max_batches: null
+  channel_only: false

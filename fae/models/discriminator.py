@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class NLayerDiscriminator(nn.Module):
-    def __init__(self, in_channels: int = 3, base_channels: int = 64, num_layers: int = 4) -> None:
+    def __init__(self, in_channels: int = 3, base_channels: int = 64, num_layers: int = 4) :
         super().__init__()
         layers = [nn.Conv2d(in_channels, base_channels, kernel_size=4, stride=2, padding=1), nn.LeakyReLU(0.2, inplace=True)]
         channels = base_channels

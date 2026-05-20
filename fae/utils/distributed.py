@@ -40,12 +40,12 @@ def is_main_process() -> bool:
     return get_rank() == 0
 
 
-def barrier() -> None:
+def barrier() :
     if is_distributed():
         dist.barrier()
 
 
-def cleanup_distributed() -> None:
+def cleanup_distributed() :
     if is_distributed():
         dist.destroy_process_group()
 
@@ -69,7 +69,7 @@ def maybe_wrap_ddp(model: torch.nn.Module | None, device: torch.device) -> torch
     return DDP(model, **kwargs)
 
 
-def maybe_set_dataloader_epoch(dataloader, epoch: int) -> None:
+def maybe_set_dataloader_epoch(dataloader, epoch: int) :
     sampler = getattr(dataloader, "sampler", None)
     if hasattr(sampler, "set_epoch"):
         sampler.set_epoch(epoch)

@@ -14,7 +14,7 @@ class DiffusionSchedule:
 
 
 class SimpleCosineDiffusionObjective:
-    def __init__(self, prediction_type: str = "v_prediction") -> None:
+    def __init__(self, prediction_type: str = "v_prediction") :
         self.prediction_type = prediction_type
 
     def build_schedule(self, t: torch.Tensor, time_shift: float = 0.0) -> DiffusionSchedule:

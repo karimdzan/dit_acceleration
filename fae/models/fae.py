@@ -57,7 +57,7 @@ class SingleAttentionEncoder(nn.Module):
         x = x + self.attn(h, grid_size=grid_size)
         mean, logvar = self.to_stats(x).chunk(2, dim=-1)
         posterior = DiagonalGaussianPosterior(mean=mean, logvar=logvar.clamp(min=-30.0, max=20.0))
-        z = posterior.sample() if self.training else posterior.mode()
+        z = mean
         return z, posterior
 
 
@@ -151,7 +151,7 @@ class FeatureAutoEncoder(nn.Module):
         if feature_mean is not None or feature_std is not None:
             self.set_feature_stats(feature_mean, feature_std)
 
-    def set_feature_stats(self, mean: torch.Tensor | None, std: torch.Tensor | None) -> None:
+    def set_feature_stats(self, mean: torch.Tensor | None, std: torch.Tensor | None) :
         if mean is None or std is None:
             raise ValueError("Both feature_mean and feature_std must be provided together.")
         mean_tensor = torch.as_tensor(mean, dtype=torch.float32).reshape(1, 1, self.input_dim)

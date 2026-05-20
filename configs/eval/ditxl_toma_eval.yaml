@@ -1,0 +1,35 @@
+model_name_or_path: /tmp/hf/hub/models--facebook--DiT-XL-2-512/snapshots/a37ff85968df8ff6d16e4c6cd16ddb4388df1963/
+output_dir: samples/ditxl_token_merge_eval
+
+generation:
+  num_samples: 128
+  batch_size: 8
+  num_inference_steps: 50
+  guidance_scale: 4.0
+  seed: 0
+  dtype: fp16
+  device: cuda
+  scheduler: dpm
+  label_mode: random
+
+token_merging:
+  enabled: true
+  method: toma
+  stride: 2
+  start_layer: 7
+  end_layer: 21
+  every: 1
+  ratio: 0.25
+  num_tiles: 16
+  attention_scale: 1000.0
+  recompute_steps: 1
+  reuse_across_layers: true
+  min_image_tokens: 64
+
+side_by_side:
+  n: 16
+  columns: 2
+
+metrics:
+  batch_size: 64
+  num_workers: 4

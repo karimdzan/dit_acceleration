@@ -6,7 +6,7 @@ from fae.generators.common import ConditioningBundle
 
 
 class ClassConditioner(nn.Module):
-    def __init__(self, num_classes: int, dim: int) -> None:
+    def __init__(self, num_classes: int, dim: int) :
         super().__init__()
         self.embedding = nn.Embedding(num_classes, dim)
 
@@ -15,7 +15,7 @@ class ClassConditioner(nn.Module):
 
 
 class FrozenTextConditioner(nn.Module):
-    def __init__(self, model_name: str = "google-t5/t5-base", out_dim: int = 1024, max_length: int = 64) -> None:
+    def __init__(self, model_name: str = "google-t5/t5-base", out_dim: int = 1024, max_length: int = 64) :
         super().__init__()
         try:
             from transformers import AutoModel, AutoTokenizer

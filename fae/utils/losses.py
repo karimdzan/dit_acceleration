@@ -18,7 +18,7 @@ class ReconstructionLossBreakdown:
 class VGGPerceptualLoss(nn.Module):
     """Lightweight perceptual loss using frozen VGG16 features."""
 
-    def __init__(self, resize_to: int = 224) -> None:
+    def __init__(self, resize_to: int = 224) :
         super().__init__()
         weights = models.VGG16_Weights.IMAGENET1K_FEATURES
         features = models.vgg16(weights=weights).features[:16]

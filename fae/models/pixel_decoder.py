@@ -19,7 +19,7 @@ class ViTPixelDecoder(nn.Module):
         mlp_ratio: float = 4.0,
         use_rope_2d: bool = True,
         rope_base: float = 10000.0,
-    ) -> None:
+    ) :
         super().__init__()
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         self.blocks = nn.ModuleList([

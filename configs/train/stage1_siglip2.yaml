@@ -36,3 +36,7 @@ train:
 data:
   root: /tmp/data
   max_samples: 1
+compute_features:
+  output: checkpoints/latent_stats/siglip2_imagenet1k.pt
+  max_batches: null
+  channel_only: false

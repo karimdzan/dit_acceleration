@@ -29,7 +29,7 @@ class ImageFolderWithOptionalCaptions(Dataset):
         return_none_on_error: bool = True,
         warn_limit: int = 50,
         load_truncated_images: bool = True,
-    ) -> None:
+    ) :
         self.root = Path(root)
         self.records: list[dict[str, Any]] = []
         self.return_none_on_error = bool(return_none_on_error)

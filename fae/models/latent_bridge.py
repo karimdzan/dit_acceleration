@@ -27,7 +27,7 @@ class BaseLatentAdapter(nn.Module):
 
 
 class IdentityLatentBridge(BaseLatentAdapter):
-    def __init__(self, spec: LatentBridgeSpec) -> None:
+    def __init__(self, spec: LatentBridgeSpec) :
         super().__init__()
         self.spec = spec
 
@@ -50,7 +50,7 @@ class IdentityLatentBridge(BaseLatentAdapter):
 
 
 class ResidualConvBlock(nn.Module):
-    def __init__(self, channels: int) -> None:
+    def __init__(self, channels: int) :
         super().__init__()
         self.block = nn.Sequential(
             nn.GroupNorm(1, channels),
@@ -72,7 +72,7 @@ class LatentBridge(BaseLatentAdapter):
         hidden_channels: int | None = None,
         num_res_blocks: int = 2,
         resize_mode: str = "bilinear",
-    ) -> None:
+    ) :
         super().__init__()
         self.spec = spec
         hidden_channels = hidden_channels or max(spec.fae_dim, spec.model_channels)

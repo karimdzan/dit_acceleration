@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "fae"
+version = "0.2.0"
+description = "Feature Autoencoder for vision backbone compression and efficient image generation"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2",
+    "torchvision",
+    "diffusers>=0.37.0",
+    "transformers",
+    "accelerate",
+    "safetensors",
+    "torchmetrics",
+    "torch-fidelity",
+    "pillow",
+    "tqdm",
+    "hydra-core>=1.3",
+    "omegaconf>=2.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fae*"]

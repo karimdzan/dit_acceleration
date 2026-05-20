@@ -1,4 +1,4 @@
-# FAE-Adapters: Flexible Feature Auto-Encoders for Frozen Vision Encoders + Pretrained DiTs
+# FAE-Adapters: Feature Auto-Encoders for Frozen Vision Encoders + Pretrained DiTs
 
 This repository implements the core method from **"One Layer Is Enough: Adapting Pretrained Visual Encoders for Image Generation"** and rewrites the generator stage around a **backend registry** so you can plug FAE latents into multiple diffusion-transformer families.
 
@@ -16,26 +16,7 @@ The new part is the generator abstraction:
 - **diffusers/Sana / Sana-Sprint** backend for small linear-DiT style text-conditioned models
 - a **bridge module** that maps between FAE token latents and the latent tensor format expected by the target generator
 
-## Why this rewrite
-
-The original minimal repo used a single in-repo DiT with token-shaped latents. Pretrained diffusion transformers do **not** share the same latent shape, conditioning interface, or denoising objective.
-
-This rewrite makes stage 3 modular:
-
-```text
-images
-  -> frozen vision encoder
-  -> single-attention FAE encoder
-  -> compact FAE tokens [B, N, d]
-  -> token/grid bridge
-  -> backend-specific latents [B, C, H, W]
-  -> pretrained DiT / MMDiT / Sana transformer
-  -> token/grid bridge (inverse)
-  -> FAE feature decoder
-  -> pixel decoder
-```
-
-## What is implemented
+## Implementation Details
 
 ### Stage 1: feature auto-encoder
 - frozen vision encoders:
@@ -87,7 +68,7 @@ Different transformer families use different denoising objectives. The code supp
 - flow-matching style training
 - distilled / consistency-style inference hooks for already-distilled checkpoints
 
-## Supported backends and intended use
+## Supported backends
 
 | Backend | Use case | Notes |
 |---|---|---|
@@ -95,23 +76,6 @@ Different transformer families use different denoising objectives. The code supp
 | `diffusers_dit` | class-conditional pretrained DiT | best first target for testing FAE + pretrained DiT |
 | `diffusers_sd3` | text-conditioned MMDiT | requires SD3 pipeline assets and native prompt encoding |
 | `diffusers_sana` | text-conditioned Sana or Sana-Sprint | good small-model target on H100; supports BF16 pipelines |
-
-## H100-oriented notes
-
-The repo is structured so you can test several strong small or medium transformer backbones on a single H100:
-- BF16 everywhere by default when available
-- gradient checkpointing toggle
-- optional `torch.compile`
-- optional `channels_last`
-- LoRA / frozen / full-finetune modes for the external backend
-- bridge-only finetuning for quick adaptation checks
-
-Suggested first experiments:
-1. train stage 1 and stage 2 with DINOv2 or SigLIP2
-2. freeze backbone + FAE + pixel decoder
-3. attach `diffusers_dit` or `diffusers_sana`
-4. train only the bridge for a short sanity run
-5. enable LoRA on the transformer if the bridge alone is not enough
 
 ## Repository layout
 
@@ -169,7 +133,7 @@ python -m fae.scripts.train_stage3 --config configs/train/stage3_sana_sprint_0p6
 python -m fae.scripts.sample --config configs/train/stage3_sana_sprint_0p6b.yaml --prompt "a tiny astronaut hatching from an egg on the moon"
 ```
 
-## Important caveat
+## Important
 
 This repo is designed to make FAE-style latent adaptation **easy to test on pretrained DiT-family backbones**. It does **not** claim to fully reproduce every original backend training recipe. In particular:
 - SD3 native training uses a full MMDiT text stack

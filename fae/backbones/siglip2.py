@@ -15,7 +15,7 @@ class SigLIP2Backbone(FrozenVisionBackbone):
         local_files_only: bool = True,
         use_fast_processor: bool = False,
         **kwargs,
-    ) -> None:
+    ):
         super().__init__()
 
         processor_name = processor_name or model_name

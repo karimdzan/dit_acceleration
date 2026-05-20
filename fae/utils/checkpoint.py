@@ -4,7 +4,7 @@ from typing import Any
 import torch
 
 
-def save_checkpoint(path: str | Path, state: dict[str, Any]) -> None:
+def save_checkpoint(path: str | Path, state: dict[str, Any]) :
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(state, path)

@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import hydra
 import torch
+from omegaconf import DictConfig, OmegaConf
 
-from fae.config import load_yaml
 from fae.models import NLayerDiscriminator
 from fae.scripts.common import (
     build_backbone_from_config,
@@ -15,7 +16,6 @@ from fae.scripts.common import (
     get_train_dtype,
     maybe_get_latest_checkpoint,
     maybe_load_resume,
-    parse_args,
 )
 from fae.training import train_stage2_epoch
 from fae.utils.checkpoint import load_checkpoint, save_checkpoint
@@ -23,9 +23,10 @@ from fae.utils.losses import VGGPerceptualLoss
 from fae.utils.distributed import barrier, cleanup_distributed, init_distributed_from_env, is_main_process, maybe_set_dataloader_epoch, maybe_wrap_ddp
 
 
-def main():
-    args = parse_args('Train pixel decoder (stage 2)')
-    config = load_yaml(args.config)
+@hydra.main(version_base=None, config_path=None)
+def main(cfg: DictConfig) :
+    config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
+    resume: str | None = config.pop("resume", None)
     init_distributed_from_env()
     device = build_device(config)
 
@@ -65,7 +66,7 @@ def main():
     discriminator_train = maybe_wrap_ddp(discriminator, device) if discriminator is not None else None
 
     output_dir = Path(config['train'].get('output_dir', 'checkpoints/stage2'))
-    resume_path = args.resume or str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None
+    resume_path = resume or (str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None)
     extra_loaders = {}
     if discriminator is not None:
         extra_loaders['discriminator'] = discriminator.load_state_dict

@@ -1,0 +1,21 @@
+
+Loading weights:   0%|          | 0/439 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 439/439 [00:00<00:00, 11906.24it/s]
+                                                           
+epoch=17 loss=0.5586 recon=0.1670 perceptual=0.3916 adversarial=0.0000 num_skipped=0.0000
+                                                           
+epoch=18 loss=0.5569 recon=0.1659 perceptual=0.3909 adversarial=0.0000 num_skipped=0.0000
+                                                           
+epoch=19 loss=0.5554 recon=0.1651 perceptual=0.3903 adversarial=0.0000 num_skipped=0.0000
+
+epoch=20 loss=0.5541 recon=0.1643 perceptual=0.3898 adversarial=0.0000 num_skipped=0.0000
+                                                           
+epoch=21 loss=0.5530 recon=0.1637 perceptual=0.3893 adversarial=0.0000 num_skipped=0.0000
+                                                           
+epoch=22 loss=0.5518 recon=0.1630 perceptual=0.3888 adversarial=0.0000 num_skipped=0.0000
+
+epoch=23 loss=0.5506 recon=0.1624 perceptual=0.3883 adversarial=0.0000 num_skipped=0.0000
+
+epoch=24 loss=0.5494 recon=0.1617 perceptual=0.3877 adversarial=0.0000 num_skipped=0.0000
+
+epoch=25 loss=0.5484 recon=0.1611 perceptual=0.3873 adversarial=0.0000 num_skipped=0.0000

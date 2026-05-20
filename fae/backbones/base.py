@@ -23,6 +23,21 @@ class FrozenVisionBackbone(nn.Module):
     def preprocess(self, images: list[Any]) -> dict[str, torch.Tensor]:
         raise NotImplementedError
 
+    def build_reconstruction_targets(self, images: list[Any]) -> torch.Tensor:
+        """Return RGB targets in [-1, 1] using the same spatial view as backbone preprocessing."""
+        raise NotImplementedError
+
+    @staticmethod
+    def _processor_to_reconstruction_targets(processor: Any, images: list[Any]) -> torch.Tensor:
+        batch = processor(images=images, return_tensors="pt", do_normalize=False)
+        pixel_values = batch.get("pixel_values")
+        if pixel_values is None:
+            raise KeyError("Backbone processor did not return 'pixel_values'.")
+        pixel_values = pixel_values.to(dtype=torch.float32)
+        if float(pixel_values.max()) > 1.5:
+            pixel_values = pixel_values / 255.0
+        return pixel_values.clamp(0.0, 1.0).mul(2.0).sub(1.0)
+
     @torch.no_grad()
     def forward_features(self, inputs: dict[str, torch.Tensor]) -> BackboneFeatures:
         raise NotImplementedError

@@ -54,7 +54,7 @@ def apply_2d_rope(q: torch.Tensor, k: torch.Tensor, grid_size: tuple[int, int], 
 
 
 class SwiGLU(nn.Module):
-    def __init__(self, dim: int, hidden_dim: int) -> None:
+    def __init__(self, dim: int, hidden_dim: int) :
         super().__init__()
         self.gate = nn.Linear(dim, hidden_dim)
         self.value = nn.Linear(dim, hidden_dim)
@@ -72,7 +72,7 @@ class SelfAttention(nn.Module):
         head_dim: int | None = None,
         use_rope_2d: bool = False,
         rope_base: float = 10000.0,
-    ) -> None:
+    ) :
         super().__init__()
         if head_dim is None:
             if dim % num_heads != 0:
@@ -117,7 +117,7 @@ class TransformerBlock(nn.Module):
         use_rmsnorm: bool = True,
         use_rope_2d: bool = False,
         rope_base: float = 10000.0,
-    ) -> None:
+    ) :
         super().__init__()
         self.norm1 = RMSNorm(dim) if use_rmsnorm else nn.LayerNorm(dim)
         self.attn = SelfAttention(dim, num_heads=num_heads, head_dim=head_dim, use_rope_2d=use_rope_2d, rope_base=rope_base)
@@ -133,7 +133,7 @@ class TransformerBlock(nn.Module):
 
 
 class AdaLayerNorm(nn.Module):
-    def __init__(self, dim: int, cond_dim: int) -> None:
+    def __init__(self, dim: int, cond_dim: int) :
         super().__init__()
         self.norm = nn.LayerNorm(dim, elementwise_affine=False)
         self.modulation = nn.Sequential(nn.SiLU(), nn.Linear(cond_dim, 2 * dim))
@@ -154,7 +154,7 @@ class DiTBlock(nn.Module):
         head_dim: int | None = None,
         use_rope_2d: bool = False,
         rope_base: float = 10000.0,
-    ) -> None:
+    ) :
         super().__init__()
         self.norm1 = AdaLayerNorm(dim, cond_dim)
         self.attn = SelfAttention(dim, num_heads=num_heads, head_dim=head_dim, use_rope_2d=use_rope_2d, rope_base=rope_base)
@@ -171,7 +171,7 @@ class DiTBlock(nn.Module):
 
 
 class SinusoidalTimestepEmbedding(nn.Module):
-    def __init__(self, dim: int) -> None:
+    def __init__(self, dim: int) :
         super().__init__()
         self.dim = dim
         self.proj = nn.Sequential(nn.Linear(dim, dim * 4), nn.SiLU(), nn.Linear(dim * 4, dim))

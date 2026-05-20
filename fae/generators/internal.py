@@ -22,7 +22,7 @@ class _InternalLatentNetwork(nn.Module):
         mlp_ratio: float = 4.0,
         head_dim: int | None = None,
         use_rope_2d: bool = False,
-    ) -> None:
+    ) :
         super().__init__()
         self.spec = spec
         self.in_proj = nn.Linear(spec.channels, model_dim)
@@ -72,7 +72,7 @@ class InternalLatentDiTBackend(LatentGeneratorBackend):
         time_shift: float = 0.0,
         head_dim: int | None = None,
         use_rope_2d: bool = False,
-    ) -> None:
+    ) :
         super().__init__()
         self.spec = spec
         self.model = _InternalLatentNetwork(

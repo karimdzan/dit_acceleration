@@ -1,9 +1,10 @@
 from pathlib import Path
 
+import hydra
 import torch
+from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 
-from fae.config import load_yaml
 from fae.generators.common import ConditioningBundle, LatentTensorSpec
 from fae.scripts.common import (
     build_backbone_from_config,
@@ -14,12 +15,11 @@ from fae.scripts.common import (
     build_pixel_decoder_from_config,
     get_fae_latent_spec,
     get_train_dtype,
-    parse_args,
 )
 from fae.utils.checkpoint import load_checkpoint
 
 
-def save_image_grid(images: torch.Tensor, path: str | Path) -> None:
+def save_image_grid(images: torch.Tensor, path: str | Path) :
     images = images.detach().cpu().clamp(-1.0, 1.0)
     images = ((images + 1) * 127.5).to(torch.uint8)
     b, c, h, w = images.shape
@@ -34,14 +34,20 @@ def save_image_grid(images: torch.Tensor, path: str | Path) -> None:
     canvas.save(path)
 
 
-def main():
-    args = parse_args('Sample from a generator trained on FAE latents')
-    config = load_yaml(args.config)
+@hydra.main(version_base=None, config_path=None)
+def main(cfg: DictConfig) :
+    config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
+    sample_cfg = config.get('sample', {})
+    seed = sample_cfg.get('seed', None)
+    num_samples = int(sample_cfg.get('num_samples', 4))
+    prompt = sample_cfg.get('prompt', None)
+    class_label = sample_cfg.get('class_label', None)
+
     device = build_device(config)
-    if args.seed is not None:
-        torch.manual_seed(args.seed)
+    if seed is not None:
+        torch.manual_seed(seed)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(args.seed)
+            torch.cuda.manual_seed_all(seed)
 
     backbone = build_backbone_from_config(config).to(device)
     fae = build_fae_from_config(config, input_dim=backbone.output_dim).to(device)
@@ -79,20 +85,20 @@ def main():
         bridge = bridge.to(train_dtype)
 
     conditioning = None
-    if args.prompt and getattr(generator, 'uses_native_prompt_encoder', False):
-        conditioning = generator.encode_prompts([args.prompt] * args.num_samples, device=device)
-    if args.class_label is not None:
-        label_tensor = torch.full((args.num_samples,), int(args.class_label), device=device, dtype=torch.long)
+    if prompt and getattr(generator, 'uses_native_prompt_encoder', False):
+        conditioning = generator.encode_prompts([prompt] * num_samples, device=device)
+    if class_label is not None:
+        label_tensor = torch.full((num_samples,), int(class_label), device=device, dtype=torch.long)
         if conditioning is None:
             conditioning = ConditioningBundle(class_labels=label_tensor)
         else:
             conditioning.class_labels = label_tensor
     elif config['generator']['name'] == 'diffusers_dit':
-        raise ValueError('--class-label is required for class-conditional DiT sampling.')
+        raise ValueError('sample.class_label is required for class-conditional DiT sampling.')
 
     with torch.no_grad():
         latents = generator.sample_latents(
-            args.num_samples,
+            num_samples,
             device=device,
             conditioning=conditioning,
             num_steps=config.get('sampling', {}).get('num_steps', 30),

@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import hydra
 import torch
+from omegaconf import DictConfig, OmegaConf
 
-from fae.config import load_yaml
 from fae.scripts.common import (
     build_backbone_from_config,
     build_dataloader,
@@ -13,17 +14,17 @@ from fae.scripts.common import (
     get_train_dtype,
     maybe_get_latest_checkpoint,
     maybe_load_resume,
-    parse_args,
 )
 from fae.training import train_stage1_epoch
-from fae.utils.checkpoint import save_checkpoint
 from fae.training.common import build_lr_scheduler
+from fae.utils.checkpoint import save_checkpoint
 from fae.utils.distributed import barrier, cleanup_distributed, init_distributed_from_env, is_main_process, maybe_set_dataloader_epoch, maybe_wrap_ddp
 
 
-def main():
-    args = parse_args('Train feature auto-encoder (stage 1)')
-    config = load_yaml(args.config)
+@hydra.main(version_base=None, config_path=None)
+def main(cfg: DictConfig) :
+    config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
+    resume: str | None = config.pop("resume", None)
     init_distributed_from_env()
     device = build_device(config)
 
@@ -48,7 +49,7 @@ def main():
     scheduler = build_lr_scheduler(optimizer, config['train'], steps_per_epoch=len(dataloader))
 
     output_dir = Path(config['train'].get('output_dir', 'checkpoints/stage1'))
-    resume_path = args.resume or str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None
+    resume_path = resume or (str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None)
     extra_loaders = {'scheduler': scheduler.load_state_dict} if scheduler is not None else None
     start_epoch, _ = maybe_load_resume(fae, optimizer, resume_path, scaler=scaler, extra_state_loaders=extra_loaders)
 

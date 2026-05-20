@@ -1,15 +1,15 @@
 mode: finetune
 device: cuda
-dtype: torch.bfloat16
+dtype: torch.float32
 num_images: 1
-image_size: 256
+image_size: 224
 fae_checkpoint: checkpoints/stage1_dinov2/latest.pt
 pixel_decoder_checkpoint: checkpoints/stage2_finetune/dinov2/latest.pt
 
-feature stats: backbone_mean=0.011395, backbone_std=1.478396, fae_mean=0.021793, fae_std=0.985849
-latent stats: z_mean=-0.156114, z_std=1.016292
+feature stats: backbone_mean=0.014534, backbone_std=1.484030, fae_mean=0.012770, fae_std=1.208492
+latent stats: z_mean=-0.041356, z_std=1.254398
 
 per-image metrics:
-- 000.jpg: mse=0.211228 l1=0.274062 psnr=6.752dB
+- 001.jpg: mse=0.440975 l1=0.428466 psnr=3.556dB
 
-means: mse=0.211228 l1=0.274062 psnr=6.752dB
+means: mse=0.440975 l1=0.428466 psnr=3.556dB

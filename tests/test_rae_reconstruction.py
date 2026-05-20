@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def add_repo_to_path(repo_root: Path) -> None:
+def add_repo_to_path(repo_root: Path) :
     repo_root = repo_root.resolve()
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))

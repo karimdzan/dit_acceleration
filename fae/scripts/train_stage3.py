@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import hydra
 import torch
+from omegaconf import DictConfig, OmegaConf
 
-from fae.config import load_yaml
 from fae.scripts.common import (
     build_backbone_from_config,
     build_bridge_from_config,
@@ -17,16 +18,16 @@ from fae.scripts.common import (
     maybe_build_conditioners,
     maybe_get_latest_checkpoint,
     maybe_load_resume,
-    parse_args,
 )
 from fae.training import train_stage3_epoch
 from fae.utils.checkpoint import load_checkpoint, save_checkpoint
 from fae.utils.distributed import barrier, cleanup_distributed, init_distributed_from_env, is_main_process, maybe_set_dataloader_epoch, maybe_wrap_ddp
 
 
-def main():
-    args = parse_args('Train generator on FAE latents (stage 3)')
-    config = load_yaml(args.config)
+@hydra.main(version_base=None, config_path=None)
+def main(cfg: DictConfig) :
+    config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
+    resume: str | None = config.pop("resume", None)
     init_distributed_from_env()
     device = build_device(config)
 
@@ -82,7 +83,7 @@ def main():
         conditioner_optimizer = torch.optim.AdamW(cond_params, lr=config['train'].get('lr', 1e-4))
 
     output_dir = Path(config['train'].get('output_dir', 'checkpoints/stage3'))
-    resume_path = args.resume or str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None
+    resume_path = resume or (str(maybe_get_latest_checkpoint(output_dir)) if maybe_get_latest_checkpoint(output_dir) else None)
     extra_loaders = {
         'bridge': bridge.load_state_dict,
     }

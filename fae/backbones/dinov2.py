@@ -7,7 +7,7 @@ from .base import BackboneFeatures, FrozenVisionBackbone
 
 
 class DINOv2Backbone(FrozenVisionBackbone):
-    def __init__(self, model_name: str = "facebook/dinov2-base", prefix_tokens: int | None = 1, **kwargs) -> None:
+    def __init__(self, model_name: str = "facebook/dinov2-base", prefix_tokens: int | None = 1, **kwargs):
         super().__init__()
         self.model_name = model_name
         self.processor = AutoImageProcessor.from_pretrained(model_name)

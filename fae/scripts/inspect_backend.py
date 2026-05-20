@@ -1,11 +1,13 @@
-from fae.config import load_yaml
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
 from fae.generators.common import LatentTensorSpec
-from fae.scripts.common import build_bridge_from_config, build_device, build_generator_from_config, count_parameters, count_trainable_parameters, parse_args
+from fae.scripts.common import build_bridge_from_config, build_device, build_generator_from_config, count_parameters, count_trainable_parameters
 
 
-def main():
-    args = parse_args('Inspect generator backend and latent bridge')
-    config = load_yaml(args.config)
+@hydra.main(version_base=None, config_path=None)
+def main(cfg: DictConfig):
+    config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
     device = build_device(config)
     seed_spec = LatentTensorSpec(
         channels=config['generator'].get('in_channels', config['fae'].get('latent_dim', 32)),

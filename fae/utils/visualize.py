@@ -14,7 +14,7 @@ def save_stage2_grid(
     pred: torch.Tensor,
     reference: torch.Tensor | None = None,
     nrow: int | None = None,
-) -> None:
+) :
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 

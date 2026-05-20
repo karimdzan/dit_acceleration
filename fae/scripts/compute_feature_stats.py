@@ -1,37 +1,23 @@
-import argparse
 from pathlib import Path
 
+import hydra
 import torch
+from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from fae.config import load_yaml
 from fae.scripts.common import build_backbone_from_config, build_dataloader, build_device
 from fae.training.common import prepare_backbone_inputs
 from fae.utils.checkpoint import save_checkpoint
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compute frozen-backbone feature mean/std for stage-1 normalization.")
-    parser.add_argument("--config", type=str, required=True, help="Training config that defines encoder/data/train batch size.")
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="Where to save the feature stats .pt file.",
-    )
-    parser.add_argument(
-        "--max-batches",
-        type=int,
-        default=None,
-        help="Optional cap on the number of dataloader batches to scan.",
-    )
-    return parser.parse_args()
-
-
 @torch.no_grad()
-def main():
-    args = parse_args()
-    config = load_yaml(args.config)
+@hydra.main(version_base=None, config_path=None)
+def main(cfg: DictConfig) :
+    config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
+    compute_cfg = config.get('compute_features', {})
+    output = compute_cfg.get('output', 'checkpoints/latent_stats/features.pt')
+    max_batches = compute_cfg.get('max_batches', None)
+
     device = build_device(config)
 
     dataloader = build_dataloader(config)
@@ -63,7 +49,7 @@ def main():
         num_images += int(features.shape[0])
         num_batches += 1
 
-        if args.max_batches is not None and num_batches >= args.max_batches:
+        if max_batches is not None and num_batches >= int(max_batches):
             break
 
     if running_count == 0 or running_sum is None or running_sq_sum is None:
@@ -73,7 +59,7 @@ def main():
     var = (running_sq_sum / running_count) - mean.square()
     std = var.clamp(min=1e-12).sqrt()
 
-    output_path = Path(args.output)
+    output_path = Path(output)
     save_checkpoint(
         output_path,
         {

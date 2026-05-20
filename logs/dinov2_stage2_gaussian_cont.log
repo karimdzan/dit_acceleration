@@ -1,0 +1,11 @@
+
+Loading weights:   0%|          | 0/439 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 439/439 [00:00<00:00, 11520.51it/s]
+
+epoch=22 loss=0.4995 recon=0.1496 perceptual=0.3499 adversarial=0.0000 num_skipped=0.0000
+
+epoch=23 loss=0.4985 recon=0.1492 perceptual=0.3493 adversarial=0.0000 num_skipped=0.0000
+                                                           
+epoch=24 loss=0.4977 recon=0.1489 perceptual=0.3488 adversarial=0.0000 num_skipped=0.0000
+
+epoch=25 loss=0.4969 recon=0.1485 perceptual=0.3484 adversarial=0.0000 num_skipped=0.0000

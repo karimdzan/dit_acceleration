@@ -1,0 +1,38 @@
+model_name_or_path: /tmp/models--Efficient-Large-Model--Sana_Sprint_0.6B_1024px_diffusers/snapshots/a7d9fc31dd5c3f5e22dbfd78360777ceed56ae97
+pipeline_class: SanaSprintPipeline
+output_dir: samples/sana_sprint_depth_prune_eval
+
+generation:
+  num_samples: 16
+  batch_size: 1
+  warmup_batches: 1
+  num_inference_steps: 2
+  guidance_scale: 4.5
+  height: 1024
+  width: 1024
+  seed: 0
+  dtype: bf16
+  device: cuda
+  output_type: pil
+  max_sequence_length: 300
+  max_timesteps: 1.5708
+  intermediate_timesteps: 1.3
+  num_images_per_prompt: 1
+  prompts:
+    - "a tiny astronaut hatching from an egg on the moon"
+    - "a cinematic photo of a red fox in a snowy forest"
+    - "a glass teapot on a wooden table, studio lighting"
+    - "a small robot painting a watercolor landscape"
+
+depth_pruning:
+  enabled: true
+  mode: remove
+  strategy: uniform
+  drop_ratio: 0.15
+  preserve_first: 1
+  preserve_last: 1
+  # drop_layers: [4, 8, 12, 16]
+
+side_by_side:
+  n: 4
+  columns: 2

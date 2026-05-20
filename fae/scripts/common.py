@@ -1,4 +1,3 @@
-import argparse
 import contextlib
 from pathlib import Path
 from typing import Any
@@ -47,17 +46,6 @@ def get_autocast_context(config, device):
     if use_amp:
         return torch.autocast(device_type="cuda", dtype=dtype)
     return contextlib.nullcontext()
-
-
-def parse_args(description: str) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('--config', type=str, required=True)
-    parser.add_argument('--resume', type=str, default=None)
-    parser.add_argument('--prompt', type=str, default=None)
-    parser.add_argument('--class-label', type=int, default=None)
-    parser.add_argument('--num-samples', type=int, default=4)
-    parser.add_argument('--seed', type=int, default=1234)
-    return parser.parse_args()
 
 
 def build_device(config: dict[str, Any]) -> torch.device:
